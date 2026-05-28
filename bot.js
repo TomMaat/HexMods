@@ -45,6 +45,23 @@ const joinedMembers = new Set();
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ============================================
+// SLASH COMMANDS VERWIJDEREN
+// ============================================
+async function deleteAllSlashCommands(guild) {
+    try {
+        // Verwijder alle slash commands in de guild
+        const commands = await guild.commands.fetch();
+        for (const command of commands.values()) {
+            await guild.commands.delete(command.id);
+            console.log(`🗑️ Verwijderd slash command: /${command.name}`);
+        }
+        console.log('✅ Alle slash commands zijn verwijderd!');
+    } catch (error) {
+        console.log('❌ Fout bij verwijderen slash commands:', error.message);
+    }
+}
+
+// ============================================
 // HELPER FUNCTIONS - MOOIE TICKET CREATIE
 // ============================================
 async function createTicketChannel(user, interaction, categoryId, ticketType) {
@@ -93,7 +110,6 @@ async function createTicketChannel(user, interaction, categoryId, ticketType) {
         ticketType: ticketType
     });
     
-    // MOOIE EMBED voor ticket creatie
     const embed = new EmbedBuilder()
         .setTitle(`🎫 ${ticketType} Ticket`)
         .setDescription(`Welcome ${user.toString()}! Your ticket has been created.\n\n**Ticket Type:** ${ticketType}\n**Created:** <t:${Math.floor(Date.now() / 1000)}:F>\n\nSupport team will assist you shortly. Use the buttons below to manage this ticket.`)
@@ -209,7 +225,7 @@ async function sendVerificationMessage(guild) {
 }
 
 // ============================================
-// READY EVENT
+// READY EVENT - VERWIJDER SLASH COMMANDS
 // ============================================
 client.once('ready', async () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
@@ -222,9 +238,12 @@ client.once('ready', async () => {
     const guild = client.guilds.cache.first();
     if (!guild) return;
     
+    // VERWIJDER ALLE SLASH COMMANDS
+    await deleteAllSlashCommands(guild);
+    
     await sendVerificationMessage(guild);
     
-    // MOOI TICKET CHANNEL SETUP
+    // TICKET CHANNEL SETUP
     const ticketChannel = client.channels.cache.get(CONFIG.TICKET_CREATION_CHANNEL_ID);
     if (ticketChannel) {
         const messages = await ticketChannel.messages.fetch();
@@ -257,6 +276,7 @@ client.once('ready', async () => {
     }
     
     console.log('✅ Bot is fully ready!');
+    console.log('📌 Gebruik /botmessage <bericht> om een bericht als bot te sturen');
 });
 
 // ============================================
@@ -274,7 +294,7 @@ client.on('guildMemberAdd', async (member) => {
             .setDescription(`Hello ${member.user.username}! Welcome to our community.\n\nPlease verify yourself in <#${CONFIG.VERIFICATION_CHANNEL_ID}> to access all channels.`)
             .setColor(0x00ff00)
             .addFields(
-                { name: '📌 Need Help?', value: 'Use the **Ticket System** to create a support ticket.', inline: true },
+                { name: '📌 Need Help?', value: 'Use the **Ticket System** in <#${CONFIG.TICKET_CREATION_CHANNEL_ID}> to create a support ticket.', inline: true },
                 { name: '✅ Verify', value: 'Go to the verification channel and click the button!', inline: true },
                 { name: '⏱️ Time Limit', value: 'You have 10 minutes to verify before being kicked.', inline: true }
             )
@@ -336,14 +356,19 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
-// /BOTMESSAGE COMMAND
+// /BOTMESSAGE COMMAND - DIT IS HET ENIGE COMMAND
 // ============================================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     
+    // Alleen /botmessage command
     if (message.content.toLowerCase().startsWith('/botmessage ')) {
+        // Check permission
         if (!message.member.roles.cache.has(CONFIG.BOTMSG_ROLE_ID)) {
-            const errorMsg = await message.reply({ content: '❌ You do not have permission to use `/botmessage`.', allowedMentions: { repliedUser: false } });
+            const errorMsg = await message.reply({ 
+                content: '❌ You do not have permission to use `/botmessage`.', 
+                allowedMentions: { repliedUser: false } 
+            });
             setTimeout(async () => {
                 await message.delete().catch(() => {});
                 await errorMsg.delete().catch(() => {});
@@ -353,7 +378,10 @@ client.on('messageCreate', async (message) => {
         
         const msgContent = message.content.slice(11);
         if (!msgContent || msgContent.trim() === '') {
-            const errorMsg = await message.reply({ content: '❌ Usage: `/botmessage your message here`', allowedMentions: { repliedUser: false } });
+            const errorMsg = await message.reply({ 
+                content: '❌ Usage: `/botmessage your message here`', 
+                allowedMentions: { repliedUser: false } 
+            });
             setTimeout(async () => {
                 await message.delete().catch(() => {});
                 await errorMsg.delete().catch(() => {});
@@ -361,10 +389,14 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
+        // Typing indicator
         await message.channel.sendTyping();
         await delay(500);
+        
+        // Delete original message
         await message.delete().catch(() => {});
         
+        // Send empty embed
         const emptyEmbed = new EmbedBuilder()
             .setDescription(msgContent)
             .setColor(0x2b2d31);
@@ -372,6 +404,7 @@ client.on('messageCreate', async (message) => {
         await message.channel.send({ embeds: [emptyEmbed] });
         console.log(`✅ Sent /botmessage in #${message.channel.name} by ${message.author.tag}`);
         
+        // Log to log channel
         const logChannel = message.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
@@ -385,12 +418,12 @@ client.on('messageCreate', async (message) => {
 });
 
 // ============================================
-// TICKET BUTTONS - MOOI
+// TICKET BUTTONS
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
-    // Ticket menu (eerste knop)
+    // Ticket menu
     if (interaction.customId === 'create_ticket_menu') {
         const embed = new EmbedBuilder()
             .setTitle('🎫 Create a Support Ticket')
@@ -427,17 +460,23 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    // Ticket aanmaak
+    // Ticket creation
     let categoryId = null, ticketType = null;
     if (interaction.customId === 'general_ticket') { categoryId = CONFIG.GENERAL_CATEGORY_ID; ticketType = 'General Question'; }
     else if (interaction.customId === 'purchase_ticket') { categoryId = CONFIG.PURCHASE_CATEGORY_ID; ticketType = 'Purchase'; }
     else if (interaction.customId === 'buysupport_ticket') { categoryId = CONFIG.BUY_SUPPORT_CATEGORY_ID; ticketType = 'Buy Support'; }
     
     if (categoryId && ticketType) {
+        // Check for existing ticket
         for (const [channelId, data] of tickets.entries()) {
             if (data.userId === interaction.user.id) {
                 const existing = interaction.guild.channels.cache.get(channelId);
-                if (existing) return interaction.reply({ content: `❌ You already have an open ticket: ${existing.toString()}!`, ephemeral: true });
+                if (existing) {
+                    return interaction.reply({ 
+                        content: `❌ You already have an open ticket: ${existing.toString()}! Please close that one first.`, 
+                        ephemeral: true 
+                    });
+                }
             }
         }
         
@@ -451,8 +490,12 @@ client.on('interactionCreate', async (interaction) => {
     if (!ticketData) return;
     
     if (interaction.customId === 'claim_ticket') {
-        if (!interaction.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID)) return interaction.reply({ content: '❌ You do not have permission to claim tickets!', ephemeral: true });
-        if (ticketData.claimedBy) return interaction.reply({ content: '❌ This ticket has already been claimed!', ephemeral: true });
+        if (!interaction.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID)) {
+            return interaction.reply({ content: '❌ You do not have permission to claim tickets!', ephemeral: true });
+        }
+        if (ticketData.claimedBy) {
+            return interaction.reply({ content: '❌ This ticket has already been claimed!', ephemeral: true });
+        }
         
         ticketData.claimedBy = interaction.user.id;
         tickets.set(interaction.channelId, ticketData);
@@ -487,7 +530,9 @@ client.on('interactionCreate', async (interaction) => {
     
     if (interaction.customId === 'close_ticket') {
         const hasPerm = interaction.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID) || ticketData.userId === interaction.user.id;
-        if (!hasPerm) return interaction.reply({ content: '❌ You do not have permission to close this ticket!', ephemeral: true });
+        if (!hasPerm) {
+            return interaction.reply({ content: '❌ You do not have permission to close this ticket!', ephemeral: true });
+        }
         
         const closeEmbed = new EmbedBuilder()
             .setTitle('🔒 Closing Ticket')
@@ -506,7 +551,9 @@ client.on('interactionCreate', async (interaction) => {
     
     if (interaction.customId === 'transcript') {
         const hasPerm = interaction.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID) || ticketData.userId === interaction.user.id;
-        if (!hasPerm) return interaction.reply({ content: '❌ You do not have permission to get transcript!', ephemeral: true });
+        if (!hasPerm) {
+            return interaction.reply({ content: '❌ You do not have permission to get transcript!', ephemeral: true });
+        }
         
         await interaction.reply({ content: '📄 Generating transcript...', ephemeral: true });
         await sendTranscript(interaction.channel, interaction);
