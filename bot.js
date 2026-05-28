@@ -10,7 +10,7 @@ const CONFIG = {
     BUY_SUPPORT_CATEGORY_ID: process.env.BUY_SUPPORT_CATEGORY_ID,
     
     SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509664538281381908',
-    BOTMSG_ROLE_ID: process.env.BOTMSG_ROLE_ID,
+    SEND_ROLE_ID: process.env.SEND_ROLE_ID,  // Role voor /send command
     TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
     
@@ -49,7 +49,6 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // ============================================
 async function deleteAllSlashCommands(guild) {
     try {
-        // Verwijder alle slash commands in de guild
         const commands = await guild.commands.fetch();
         for (const command of commands.values()) {
             await guild.commands.delete(command.id);
@@ -229,10 +228,10 @@ async function sendVerificationMessage(guild) {
 // ============================================
 client.once('ready', async () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
-    client.user.setActivity('Ready for /botmessage', { type: 'LISTENING' });
+    client.user.setActivity('Ready for /send', { type: 'LISTENING' });
     
     setInterval(() => {
-        client.user.setActivity('Ready for /botmessage', { type: 'LISTENING' });
+        client.user.setActivity('Ready for /send', { type: 'LISTENING' });
     }, 300000);
     
     const guild = client.guilds.cache.first();
@@ -276,7 +275,7 @@ client.once('ready', async () => {
     }
     
     console.log('✅ Bot is fully ready!');
-    console.log('📌 Gebruik /botmessage <bericht> om een bericht als bot te sturen');
+    console.log('📌 Gebruik /send <bericht> om een bericht als bot te sturen');
 });
 
 // ============================================
@@ -294,7 +293,7 @@ client.on('guildMemberAdd', async (member) => {
             .setDescription(`Hello ${member.user.username}! Welcome to our community.\n\nPlease verify yourself in <#${CONFIG.VERIFICATION_CHANNEL_ID}> to access all channels.`)
             .setColor(0x00ff00)
             .addFields(
-                { name: '📌 Need Help?', value: 'Use the **Ticket System** in <#${CONFIG.TICKET_CREATION_CHANNEL_ID}> to create a support ticket.', inline: true },
+                { name: '📌 Need Help?', value: 'Use the **Ticket System** to create a support ticket.', inline: true },
                 { name: '✅ Verify', value: 'Go to the verification channel and click the button!', inline: true },
                 { name: '⏱️ Time Limit', value: 'You have 10 minutes to verify before being kicked.', inline: true }
             )
@@ -356,17 +355,17 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
-// /BOTMESSAGE COMMAND - DIT IS HET ENIGE COMMAND
+// /SEND COMMAND - DIT IS HET ENIGE COMMAND
 // ============================================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     
-    // Alleen /botmessage command
-    if (message.content.toLowerCase().startsWith('/botmessage ')) {
+    // Alleen /send command
+    if (message.content.toLowerCase().startsWith('/send ')) {
         // Check permission
-        if (!message.member.roles.cache.has(CONFIG.BOTMSG_ROLE_ID)) {
+        if (!message.member.roles.cache.has(CONFIG.SEND_ROLE_ID)) {
             const errorMsg = await message.reply({ 
-                content: '❌ You do not have permission to use `/botmessage`.', 
+                content: '❌ You do not have permission to use `/send`.', 
                 allowedMentions: { repliedUser: false } 
             });
             setTimeout(async () => {
@@ -376,10 +375,10 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
-        const msgContent = message.content.slice(11);
+        const msgContent = message.content.slice(6); // '/send ' is 6 characters
         if (!msgContent || msgContent.trim() === '') {
             const errorMsg = await message.reply({ 
-                content: '❌ Usage: `/botmessage your message here`', 
+                content: '❌ Usage: `/send your message here`', 
                 allowedMentions: { repliedUser: false } 
             });
             setTimeout(async () => {
@@ -402,13 +401,13 @@ client.on('messageCreate', async (message) => {
             .setColor(0x2b2d31);
         
         await message.channel.send({ embeds: [emptyEmbed] });
-        console.log(`✅ Sent /botmessage in #${message.channel.name} by ${message.author.tag}`);
+        console.log(`✅ Sent /send in #${message.channel.name} by ${message.author.tag}: ${msgContent.substring(0, 50)}`);
         
         // Log to log channel
         const logChannel = message.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
-                .setTitle('📝 /botmessage Command Used')
+                .setTitle('📝 /send Command Used')
                 .setDescription(`**User:** ${message.author.tag} (${message.author.id})\n**Channel:** ${message.channel.name}\n**Message:** ${msgContent.substring(0, 500)}`)
                 .setColor(0xffaa00)
                 .setTimestamp();
