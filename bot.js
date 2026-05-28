@@ -10,7 +10,7 @@ const CONFIG = {
     PURCHASE_CATEGORY_ID: process.env.PURCHASE_CATEGORY_ID,
     BUY_SUPPORT_CATEGORY_ID: process.env.BUY_SUPPORT_CATEGORY_ID,
     
-    SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509663687449903134',
+    SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509664538281381908',
     BOTMSG_ROLE_ID: process.env.BOTMSG_ROLE_ID,
     TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
@@ -223,12 +223,12 @@ async function sendVerificationMessage(guild) {
 client.once('ready', async () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
     
-    client.user.setActivity('Ticket System', { type: 'WATCHING' });
+    client.user.setActivity('Ready for /botmessage', { type: 'LISTENING' });
     
     // Keep-alive ping every 5 minutes
     setInterval(() => {
         console.log('🔄 Keep-alive ping');
-        client.user.setActivity('Ticket System', { type: 'WATCHING' });
+        client.user.setActivity('Ready for /botmessage', { type: 'LISTENING' });
     }, 300000);
     
     const guild = client.guilds.cache.first();
@@ -250,7 +250,7 @@ client.once('ready', async () => {
                     try {
                         await member.roles.add(unverifiedRole);
                         count++;
-                        await delay(1000); // 1 second delay between each member
+                        await delay(1000);
                     } catch (error) {
                         console.log(`Couldn't add role to ${member.user.tag}: ${error.message}`);
                     }
@@ -282,7 +282,7 @@ client.once('ready', async () => {
                     await member.send({ embeds: [welcomeEmbed] });
                     joinedMembers.add(member.id);
                     dmCount++;
-                    await delay(2000); // 2 second delay between DMs (important!)
+                    await delay(2000);
                 } catch (error) {
                     console.log(`Couldn't DM ${member.user.tag}: ${error.message}`);
                 }
@@ -426,8 +426,15 @@ client.on('interactionCreate', async (interaction) => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     
+    console.log(`📝 Message received: ${message.content}`);
+    
+    // Check for /botmessage command (case insensitive)
     if (message.content.toLowerCase().startsWith('/botmessage ')) {
+        console.log(`✅ /botmessage command detected from ${message.author.tag}`);
+        
+        // Check if user has the required role
         if (!message.member.roles.cache.has(CONFIG.BOTMSG_ROLE_ID)) {
+            console.log(`❌ User ${message.author.tag} does not have permission`);
             const errorMsg = await message.reply({
                 content: '❌ You do not have permission to use the `/botmessage` command.',
                 allowedMentions: { repliedUser: false }
@@ -439,7 +446,10 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
+        // Extract the message content (remove '/botmessage ' which is 11 characters)
         let msgContent = message.content.slice(11);
+        
+        console.log(`📤 Message content: ${msgContent}`);
         
         if (!msgContent || msgContent.trim() === '') {
             const errorMsg = await message.reply({
@@ -453,16 +463,26 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
+        // Show typing indicator (looks like bot is typing)
         await message.channel.sendTyping();
-        await delay(500);
-        await message.delete().catch(console.error);
         
+        // Wait a bit to make it look natural
+        await delay(500);
+        
+        // Delete the original command message (no trace of who used it)
+        await message.delete().catch(console.error);
+        console.log(`🗑️ Deleted original command message`);
+        
+        // Create an EMPTY embed with only the message content
         const emptyEmbed = new EmbedBuilder()
             .setDescription(msgContent)
-            .setColor(0x2b2d31);
+            .setColor(0x2b2d31);  // Discord dark theme color
         
+        // Send the embed as the BOT
         await message.channel.send({ embeds: [emptyEmbed] });
+        console.log(`✅ Sent embed message in ${message.channel.name}`);
         
+        // Log to log channel
         const logChannel = message.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
@@ -560,53 +580,8 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
-// SLASH COMMANDS
+// TICKET CREATION BUTTONS
 // ============================================
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    
-    if (interaction.commandName === 'ticket') {
-        const embed = new EmbedBuilder()
-            .setTitle('🎫 Support Ticket System')
-            .setDescription('Please select the type of ticket you want to create from the buttons below.')
-            .setColor(0x00ff00)
-            .addFields(
-                { name: '📋 General Question', value: 'Ask questions about the server, community, or general topics.', inline: true },
-                { name: '💰 Purchase', value: 'Questions about purchases, transactions, or payments.', inline: true },
-                { name: '🛡️ Buy Support', value: 'Dedicated support for paid services or premium features.', inline: true }
-            )
-            .setThumbnail(interaction.guild.iconURL())
-            .setFooter({ text: 'Support team will assist you shortly', iconURL: client.user.displayAvatarURL() })
-            .setTimestamp();
-        
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('general_ticket')
-                    .setLabel('General Question')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji('📋'),
-                new ButtonBuilder()
-                    .setCustomId('purchase_ticket')
-                    .setLabel('Purchase')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('💰'),
-                new ButtonBuilder()
-                    .setCustomId('buysupport_ticket')
-                    .setLabel('Buy Support')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('🛡️')
-            );
-        
-        await interaction.reply({ embeds: [embed], components: [row] });
-    }
-    
-    if (interaction.commandName === 'ping') {
-        await interaction.reply(`🏓 Pong! Latency: ${Date.now() - interaction.createdTimestamp}ms`);
-    }
-});
-
-// Handle ticket creation buttons
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
@@ -622,63 +597,7 @@ client.on('interactionCreate', async (interaction) => {
     } else if (interaction.customId === 'buysupport_ticket') {
         categoryId = CONFIG.BUY_SUPPORT_CATEGORY_ID;
         ticketType = 'Buy Support';
-    }
-    
-    if (categoryId && ticketType) {
-        let existingTicket = null;
-        for (const [channelId, data] of tickets.entries()) {
-            if (data.userId === interaction.user.id) {
-                existingTicket = interaction.guild.channels.cache.get(channelId);
-                break;
-            }
-        }
-        
-        if (existingTicket) {
-            return interaction.reply({ 
-                content: `❌ You already have an open ticket: ${existingTicket.toString()}! Please close that one first.`, 
-                ephemeral: true 
-            });
-        }
-        
-        await interaction.reply({ content: `🎫 Creating your ${ticketType} ticket...`, ephemeral: true });
-        const channel = await createTicketChannel(interaction.user, interaction, categoryId, ticketType);
-        await interaction.editReply({ content: `✅ ${ticketType} ticket created: ${channel.toString()}`, ephemeral: true });
-    }
-});
-
-// Register slash commands
-async function registerCommands(guildId) {
-    const commands = [
-        {
-            name: 'ticket',
-            description: 'Create a support ticket',
-            options: []
-        },
-        {
-            name: 'ping',
-            description: 'Check bot latency',
-            options: []
-        }
-    ];
-    
-    const guild = client.guilds.cache.get(guildId);
-    if (guild) {
-        await guild.commands.set(commands);
-        console.log('✅ Slash commands registered!');
-    }
-}
-
-client.once('ready', async () => {
-    const guild = client.guilds.cache.first();
-    if (guild) {
-        await registerCommands(guild.id);
-    }
-});
-
-// Handle create ticket menu button
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isButton()) return;
-    if (interaction.customId === 'create_ticket_menu') {
+    } else if (interaction.customId === 'create_ticket_menu') {
         const embed = new EmbedBuilder()
             .setTitle('🎫 Create a Support Ticket')
             .setDescription('Please select the category that best fits your needs:')
@@ -711,6 +630,28 @@ client.on('interactionCreate', async (interaction) => {
             );
         
         await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+        return;
+    }
+    
+    if (categoryId && ticketType) {
+        let existingTicket = null;
+        for (const [channelId, data] of tickets.entries()) {
+            if (data.userId === interaction.user.id) {
+                existingTicket = interaction.guild.channels.cache.get(channelId);
+                break;
+            }
+        }
+        
+        if (existingTicket) {
+            return interaction.reply({ 
+                content: `❌ You already have an open ticket: ${existingTicket.toString()}! Please close that one first.`, 
+                ephemeral: true 
+            });
+        }
+        
+        await interaction.reply({ content: `🎫 Creating your ${ticketType} ticket...`, ephemeral: true });
+        const channel = await createTicketChannel(interaction.user, interaction, categoryId, ticketType);
+        await interaction.editReply({ content: `✅ ${ticketType} ticket created: ${channel.toString()}`, ephemeral: true });
     }
 });
 
