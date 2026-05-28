@@ -11,7 +11,7 @@ const CONFIG = {
     BUY_SUPPORT_CATEGORY_ID: process.env.BUY_SUPPORT_CATEGORY_ID,
     
     SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509663687449903134',
-    MSG_ROLE_ID: process.env.MSG_ROLE_ID,
+    BOTMSG_ROLE_ID: process.env.BOTMSG_ROLE_ID,  // Role for /botmessage command
     TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
     
@@ -239,15 +239,17 @@ client.on('guildMemberAdd', async (member) => {
 });
 
 // ============================================
-// /MESSAGE COMMAND - SENDS AS BOT IN SAME CHANNEL
+// /BOTMESSAGE COMMAND - WORKS IN EVERY CHANNEL
 // ============================================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     
-    if (message.content.startsWith('/message ')) {
-        if (!message.member.roles.cache.has(CONFIG.MSG_ROLE_ID)) {
+    // Check for /botmessage command (case insensitive)
+    if (message.content.toLowerCase().startsWith('/botmessage ')) {
+        // Check if user has the required role
+        if (!message.member.roles.cache.has(CONFIG.BOTMSG_ROLE_ID)) {
             const errorMsg = await message.reply({
-                content: '❌ You do not have permission to use the `/message` command.',
+                content: '❌ You do not have permission to use the `/botmessage` command.',
                 allowedMentions: { repliedUser: false }
             });
             setTimeout(async () => {
@@ -257,11 +259,17 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
-        const msgContent = message.content.slice(9); // '/message ' is 9 characters
+        // Extract the message content (remove '/botmessage ' which is 11 characters)
+        let msgContent = message.content.slice(11);
+        
+        // Also handle '/BotMessage ' and other capitalizations
+        if (message.content.toLowerCase().startsWith('/botmessage ') && message.content !== message.content.toLowerCase()) {
+            msgContent = message.content.slice(11);
+        }
         
         if (!msgContent || msgContent.trim() === '') {
             const errorMsg = await message.reply({
-                content: '❌ Please provide a message. Usage: `/message your message here`',
+                content: '❌ Please provide a message. Usage: `/botmessage your message here`',
                 allowedMentions: { repliedUser: false }
             });
             setTimeout(async () => {
@@ -271,20 +279,23 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
-        const embed = new EmbedBuilder()
-            .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL() })
-            .setDescription(msgContent)
-            .setColor(0x0099ff)
-            .setFooter({ text: 'Support Message', iconURL: client.user.displayAvatarURL() })
-            .setTimestamp();
+        // Show typing indicator (looks like bot is typing)
+        await message.channel.sendTyping();
         
+        // Wait a bit to make it look natural
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Delete the original command message (no trace of who used it)
         await message.delete().catch(console.error);
-        await message.channel.send({ embeds: [embed] });
         
+        // Send the message as the BOT (plain text, not embed)
+        await message.channel.send(msgContent);
+        
+        // Log to log channel
         const logChannel = message.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
-                .setTitle('📝 /message Command Used')
+                .setTitle('📝 /botmessage Command Used')
                 .setDescription(`**User:** ${message.author.tag} (${message.author.id})\n**Channel:** ${message.channel.name}\n**Message:** ${msgContent.substring(0, 500)}`)
                 .setColor(0xffaa00)
                 .setTimestamp();
