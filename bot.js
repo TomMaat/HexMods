@@ -11,11 +11,16 @@ const CONFIG = {
     BUY_SUPPORT_CATEGORY_ID: process.env.BUY_SUPPORT_CATEGORY_ID,
     
     SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509663687449903134',
-    BOTMSG_ROLE_ID: process.env.BOTMSG_ROLE_ID,  // Role for /botmessage command
+    BOTMSG_ROLE_ID: process.env.BOTMSG_ROLE_ID,
     TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
     
     TICKET_CREATION_CHANNEL_ID: process.env.TICKET_CREATION_CHANNEL_ID,
+    
+    // Verification settings
+    VERIFIED_ROLE_ID: process.env.VERIFIED_ROLE_ID,
+    UNVERIFIED_ROLE_ID: process.env.UNVERIFIED_ROLE_ID,
+    VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
     
     TOKEN: process.env.TOKEN
 };
@@ -37,8 +42,9 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is alive!'));
 app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 
-// Store tickets
+// Store tickets and track joined members
 const tickets = new Map();
+const joinedMembers = new Set(); // Track members who already got welcome DM
 
 // ============================================
 // HELPER FUNCTIONS
@@ -168,6 +174,48 @@ async function sendTranscript(channel, interaction) {
 }
 
 // ============================================
+// VERIFICATION SYSTEM
+// ============================================
+async function sendVerificationMessage(guild) {
+    const verificationChannel = guild.channels.cache.get(CONFIG.VERIFICATION_CHANNEL_ID);
+    if (!verificationChannel) {
+        console.log('❌ Verification channel not found!');
+        return;
+    }
+    
+    // Clear previous messages
+    const messages = await verificationChannel.messages.fetch();
+    if (messages.size > 0) {
+        await verificationChannel.bulkDelete(messages).catch(() => console.log('Could not clear verification channel'));
+    }
+    
+    const embed = new EmbedBuilder()
+        .setTitle('✅ Verification Required')
+        .setDescription('Welcome to the server! Please verify yourself to access the rest of the channels.')
+        .setColor(0x00ff00)
+        .addFields(
+            { name: '📋 Why verify?', value: 'Verification helps us keep the server safe from bots and spam.', inline: false },
+            { name: '🔓 What happens after?', value: 'You will get access to all channels and can participate in discussions.', inline: false },
+            { name: '⚠️ Important', value: 'You have 10 minutes to verify before being kicked.', inline: true }
+        )
+        .setThumbnail(guild.iconURL())
+        .setFooter({ text: 'Click the button below to verify', iconURL: client.user.displayAvatarURL() })
+        .setTimestamp();
+    
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('verify_button')
+                .setLabel('Verify Me')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('✅')
+        );
+    
+    await verificationChannel.send({ embeds: [embed], components: [row] });
+    console.log('✅ Verification message sent!');
+}
+
+// ============================================
 // EVENT HANDLERS
 // ============================================
 client.once('ready', async () => {
@@ -181,29 +229,56 @@ client.once('ready', async () => {
         client.user.setActivity('Ticket System', { type: 'WATCHING' });
     }, 300000);
     
-    // Send welcome DM to all existing members
     const guild = client.guilds.cache.first();
     if (guild) {
+        // Setup verification system
+        await sendVerificationMessage(guild);
+        
+        // Assign unverified role to all existing members (except bots and admins)
+        const unverifiedRole = guild.roles.cache.get(CONFIG.UNVERIFIED_ROLE_ID);
+        const verifiedRole = guild.roles.cache.get(CONFIG.VERIFIED_ROLE_ID);
+        
+        if (unverifiedRole && verifiedRole) {
+            console.log(`🔄 Setting up verification roles for existing members...`);
+            const members = await guild.members.fetch();
+            let count = 0;
+            
+            for (const member of members.values()) {
+                if (!member.user.bot && !member.roles.cache.has(verifiedRole.id)) {
+                    try {
+                        await member.roles.add(unverifiedRole);
+                        count++;
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    } catch (error) {
+                        console.log(`Couldn't add role to ${member.user.tag}: ${error.message}`);
+                    }
+                }
+            }
+            console.log(`✅ Added unverified role to ${count} members`);
+        }
+        
+        // Send welcome DM to existing members (only once)
         console.log(`🔄 Sending welcome DMs to existing members...`);
         const members = await guild.members.fetch();
         let dmCount = 0;
+        
         for (const member of members.values()) {
-            if (!member.user.bot) {
+            if (!member.user.bot && !joinedMembers.has(member.id)) {
                 try {
                     const welcomeEmbed = new EmbedBuilder()
                         .setTitle('🎉 Welcome to the Server!')
-                        .setDescription(`Hello ${member.user.username}! Welcome to our community.`)
+                        .setDescription(`Hello ${member.user.username}! Welcome to our community.\n\nPlease verify yourself in <#${CONFIG.VERIFICATION_CHANNEL_ID}> to access all channels.`)
                         .setColor(0x00ff00)
                         .addFields(
-                            { name: '📌 Need Help?', value: 'Use the **Ticket System** in the support channel to create a ticket.', inline: true },
-                            { name: '📜 Rules', value: 'Please read the rules before participating.', inline: true },
-                            { name: '💬 Questions', value: 'Feel free to ask in the appropriate channels!', inline: true }
+                            { name: '📌 Need Help?', value: 'Use the **Ticket System** to create a support ticket.', inline: true },
+                            { name: '✅ Verify', value: 'Go to the verification channel and click the button!', inline: true }
                         )
                         .setThumbnail(guild.iconURL())
-                        .setFooter({ text: 'We hope you enjoy your stay!', iconURL: client.user.displayAvatarURL() })
+                        .setFooter({ text: 'Please verify to access the server', iconURL: client.user.displayAvatarURL() })
                         .setTimestamp();
                     
                     await member.send({ embeds: [welcomeEmbed] });
+                    joinedMembers.add(member.id);
                     dmCount++;
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (error) {
@@ -215,26 +290,103 @@ client.once('ready', async () => {
     }
 });
 
-// Welcome DM for new members
+// Welcome DM for new members (only once per member)
 client.on('guildMemberAdd', async (member) => {
+    // Check if already sent welcome DM
+    if (joinedMembers.has(member.id)) return;
+    
     try {
+        // Add unverified role to new member
+        const unverifiedRole = member.guild.roles.cache.get(CONFIG.UNVERIFIED_ROLE_ID);
+        if (unverifiedRole) {
+            await member.roles.add(unverifiedRole);
+        }
+        
         const welcomeEmbed = new EmbedBuilder()
             .setTitle('🎉 Welcome to the Server!')
-            .setDescription(`Hello ${member.user.username}! Welcome to our community.`)
+            .setDescription(`Hello ${member.user.username}! Welcome to our community.\n\nPlease verify yourself in <#${CONFIG.VERIFICATION_CHANNEL_ID}> to access all channels.`)
             .setColor(0x00ff00)
             .addFields(
-                { name: '📌 Need Help?', value: 'Use the **Ticket System** in the support channel to create a ticket.', inline: true },
-                { name: '📜 Rules', value: 'Please read the rules before participating.', inline: true },
-                { name: '💬 Questions', value: 'Feel free to ask in the appropriate channels!', inline: true }
+                { name: '📌 Need Help?', value: 'Use the **Ticket System** to create a support ticket.', inline: true },
+                { name: '✅ Verify', value: 'Go to the verification channel and click the button!', inline: true },
+                { name: '⏱️ Time Limit', value: 'You have 10 minutes to verify before being kicked.', inline: true }
             )
             .setThumbnail(member.guild.iconURL())
-            .setFooter({ text: 'We hope you enjoy your stay!', iconURL: client.user.displayAvatarURL() })
+            .setFooter({ text: 'Please verify to access the server', iconURL: client.user.displayAvatarURL() })
             .setTimestamp();
         
         await member.send({ embeds: [welcomeEmbed] });
+        joinedMembers.add(member.id);
         console.log(`📨 Sent welcome DM to ${member.user.tag}`);
+        
+        // Auto-kick after 10 minutes if not verified
+        setTimeout(async () => {
+            const freshMember = await member.guild.members.fetch(member.id).catch(() => null);
+            if (freshMember && !freshMember.roles.cache.has(CONFIG.VERIFIED_ROLE_ID)) {
+                try {
+                    await freshMember.kick('Did not verify within 10 minutes');
+                    console.log(`⏰ Kicked ${member.user.tag} for not verifying`);
+                } catch (error) {
+                    console.log(`Could not kick ${member.user.tag}: ${error.message}`);
+                }
+            }
+        }, 10 * 60 * 1000); // 10 minutes
+        
     } catch (error) {
         console.log(`Couldn't send welcome DM to ${member.user.tag}: ${error.message}`);
+    }
+});
+
+// Handle verification button
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+    
+    if (interaction.customId === 'verify_button') {
+        const verifiedRole = interaction.guild.roles.cache.get(CONFIG.VERIFIED_ROLE_ID);
+        const unverifiedRole = interaction.guild.roles.cache.get(CONFIG.UNVERIFIED_ROLE_ID);
+        
+        if (!verifiedRole) {
+            return interaction.reply({ content: '❌ Verification role not configured!', ephemeral: true });
+        }
+        
+        // Check if already verified
+        if (interaction.member.roles.cache.has(verifiedRole.id)) {
+            return interaction.reply({ content: '✅ You are already verified!', ephemeral: true });
+        }
+        
+        // Add verified role, remove unverified role
+        await interaction.member.roles.add(verifiedRole);
+        if (unverifiedRole) {
+            await interaction.member.roles.remove(unverifiedRole);
+        }
+        
+        const verifyEmbed = new EmbedBuilder()
+            .setTitle('✅ Verification Successful!')
+            .setDescription(`Welcome ${interaction.user.toString()}! You have been verified and now have access to all channels.`)
+            .setColor(0x00ff00)
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [verifyEmbed], ephemeral: true });
+        
+        // Log verification
+        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+        if (logChannel) {
+            const logEmbed = new EmbedBuilder()
+                .setTitle('✅ User Verified')
+                .setDescription(`**User:** ${interaction.user.tag} (${interaction.user.id})\n**Time:** <t:${Math.floor(Date.now() / 1000)}:F>`)
+                .setColor(0x00ff00)
+                .setTimestamp();
+            await logChannel.send({ embeds: [logEmbed] });
+        }
+        
+        // Send welcome message in verification channel
+        const welcomeMsg = new EmbedBuilder()
+            .setTitle('🎉 New Member Verified!')
+            .setDescription(`${interaction.user.toString()} has successfully verified and joined the server!`)
+            .setColor(0x00ff00)
+            .setTimestamp();
+        
+        await interaction.channel.send({ embeds: [welcomeMsg] });
     }
 });
 
@@ -261,11 +413,6 @@ client.on('messageCreate', async (message) => {
         
         // Extract the message content (remove '/botmessage ' which is 11 characters)
         let msgContent = message.content.slice(11);
-        
-        // Also handle '/BotMessage ' and other capitalizations
-        if (message.content.toLowerCase().startsWith('/botmessage ') && message.content !== message.content.toLowerCase()) {
-            msgContent = message.content.slice(11);
-        }
         
         if (!msgContent || msgContent.trim() === '') {
             const errorMsg = await message.reply({
@@ -305,7 +452,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // ============================================
-// BUTTON INTERACTIONS
+// BUTTON INTERACTIONS (TICKETS)
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
