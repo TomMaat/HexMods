@@ -391,7 +391,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
-// /BOTMESSAGE COMMAND - WORKS IN EVERY CHANNEL
+// /BOTMESSAGE COMMAND - SENDS EMPTY EMBED
 // ============================================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
@@ -435,8 +435,13 @@ client.on('messageCreate', async (message) => {
         // Delete the original command message (no trace of who used it)
         await message.delete().catch(console.error);
         
-        // Send the message as the BOT (plain text, not embed)
-        await message.channel.send(msgContent);
+        // Create an EMPTY embed with only the message content (no title, no author, no footer)
+        const emptyEmbed = new EmbedBuilder()
+            .setDescription(msgContent)
+            .setColor(0x2b2d31);  // Discord dark theme color (almost invisible)
+        
+        // Send the embed as the BOT
+        await message.channel.send({ embeds: [emptyEmbed] });
         
         // Log to log channel
         const logChannel = message.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
