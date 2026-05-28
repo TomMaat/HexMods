@@ -239,15 +239,15 @@ client.on('guildMemberAdd', async (member) => {
 });
 
 // ============================================
-// /MSG COMMAND - SENDS AS BOT IN SAME CHANNEL
+// /MESSAGE COMMAND - SENDS AS BOT IN SAME CHANNEL
 // ============================================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     
-    if (message.content.startsWith('/msg ')) {
+    if (message.content.startsWith('/message ')) {
         if (!message.member.roles.cache.has(CONFIG.MSG_ROLE_ID)) {
             const errorMsg = await message.reply({
-                content: '❌ You do not have permission to use the `/msg` command.',
+                content: '❌ You do not have permission to use the `/message` command.',
                 allowedMentions: { repliedUser: false }
             });
             setTimeout(async () => {
@@ -257,11 +257,11 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
-        const msgContent = message.content.slice(5);
+        const msgContent = message.content.slice(9); // '/message ' is 9 characters
         
         if (!msgContent || msgContent.trim() === '') {
             const errorMsg = await message.reply({
-                content: '❌ Please provide a message. Usage: `/msg your message here`',
+                content: '❌ Please provide a message. Usage: `/message your message here`',
                 allowedMentions: { repliedUser: false }
             });
             setTimeout(async () => {
@@ -284,7 +284,7 @@ client.on('messageCreate', async (message) => {
         const logChannel = message.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
-                .setTitle('📝 /msg Command Used')
+                .setTitle('📝 /message Command Used')
                 .setDescription(`**User:** ${message.author.tag} (${message.author.id})\n**Channel:** ${message.channel.name}\n**Message:** ${msgContent.substring(0, 500)}`)
                 .setColor(0xffaa00)
                 .setTimestamp();
