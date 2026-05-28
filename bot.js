@@ -2,24 +2,22 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 const express = require('express');
 
 // ============================================
-// PLACEHOLDERS - EDIT THESE VALUES
+// CONFIG - ALLEEN ENVIRONMENT VARIABLES
 // ============================================
 const CONFIG = {
     // Ticket settings - 3 CATEGORIES
-    GENERAL_CATEGORY_ID: 'YOUR_GENERAL_CATEGORY_ID',     // Category for General Questions
-    PURCHASE_CATEGORY_ID: 'YOUR_PURCHASE_CATEGORY_ID',   // Category for Purchase questions
-    BUY_SUPPORT_CATEGORY_ID: 'YOUR_BUY_SUPPORT_CATEGORY_ID', // Category for Buy Support
+    GENERAL_CATEGORY_ID: process.env.GENERAL_CATEGORY_ID,
+    PURCHASE_CATEGORY_ID: process.env.PURCHASE_CATEGORY_ID,
+    BUY_SUPPORT_CATEGORY_ID: process.env.BUY_SUPPORT_CATEGORY_ID,
     
-    SUPPORT_ROLE_ID: '1509664538281381908',              // Role that can see/claim tickets
-    MSG_ROLE_ID: 'YOUR_MSG_ROLE_ID_HERE',                // Role that can use /msg command
-    TRANSCRIPT_CHANNEL_ID: 'YOUR_TRANSCRIPT_CHANNEL',    // Channel for ticket transcripts
-    LOG_CHANNEL_ID: 'YOUR_LOG_CHANNEL',                  // Channel for bot logs
+    SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509664538281381908',
+    MSG_ROLE_ID: process.env.MSG_ROLE_ID,
+    TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
+    LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
     
-    // Messages
-    TICKET_CREATION_CHANNEL_ID: 'YOUR_TICKET_CHANNEL',   // Channel where ticket embed appears
+    TICKET_CREATION_CHANNEL_ID: process.env.TICKET_CREATION_CHANNEL_ID,
     
-    // Bot settings
-    TOKEN: 'YOUR_BOT_TOKEN_HERE'
+    TOKEN: process.env.TOKEN
 };
 
 // ============================================
@@ -35,9 +33,9 @@ const client = new Client({
     ]
 });
 
-const expressApp = express();
-expressApp.get('/', (req, res) => res.send('Bot is alive!'));
-expressApp.listen(3000, () => console.log('Keep-alive server running on port 3000'));
+const app = express();
+app.get('/', (req, res) => res.send('Bot is alive!'));
+app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 
 // Store tickets
 const tickets = new Map();
@@ -49,7 +47,6 @@ async function createTicketChannel(user, interaction, categoryId, ticketType) {
     const guild = interaction.guild;
     const supportRole = guild.roles.cache.get(CONFIG.SUPPORT_ROLE_ID);
     
-    // Create ticket channel name based on type
     let prefix = '';
     switch(ticketType) {
         case 'General Question':
@@ -92,7 +89,6 @@ async function createTicketChannel(user, interaction, categoryId, ticketType) {
         ticketType: ticketType
     });
     
-    // Send beautiful embed when ticket is created
     const embed = new EmbedBuilder()
         .setTitle(`🎫 ${ticketType} Ticket`)
         .setDescription(`Welcome ${user.toString()}! Your ticket has been created.\n\n**Ticket Type:** ${ticketType}\n**Created:** <t:${Math.floor(Date.now() / 1000)}:F>\n\nSupport team will assist you shortly. Use the buttons below to manage this ticket.`)
@@ -275,7 +271,6 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
-        // Create embed for the message (sent by bot)
         const embed = new EmbedBuilder()
             .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL() })
             .setDescription(msgContent)
@@ -283,13 +278,9 @@ client.on('messageCreate', async (message) => {
             .setFooter({ text: 'Support Message', iconURL: client.user.displayAvatarURL() })
             .setTimestamp();
         
-        // Delete the original command message
         await message.delete().catch(console.error);
-        
-        // Send the embed as the BOT in the SAME channel
         await message.channel.send({ embeds: [embed] });
         
-        // Log to log channel
         const logChannel = message.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
@@ -336,7 +327,6 @@ client.on('interactionCreate', async (interaction) => {
         
         await interaction.reply({ embeds: [embed] });
         
-        // DM the user that their ticket was claimed
         const user = await interaction.guild.members.fetch(ticketData.userId);
         if (user) {
             const claimEmbed = new EmbedBuilder()
@@ -456,7 +446,6 @@ client.on('interactionCreate', async (interaction) => {
     }
     
     if (categoryId && ticketType) {
-        // Check if user already has open ticket
         let existingTicket = null;
         for (const [channelId, data] of tickets.entries()) {
             if (data.userId === interaction.user.id) {
@@ -511,10 +500,8 @@ client.once('ready', async () => {
         await registerCommands(guild.id);
     }
     
-    // Setup ticket creation embed in specific channel
     const ticketChannel = client.channels.cache.get(CONFIG.TICKET_CREATION_CHANNEL_ID);
     if (ticketChannel) {
-        // Clear previous messages
         const messages = await ticketChannel.messages.fetch();
         if (messages.size > 0) {
             await ticketChannel.bulkDelete(messages).catch(() => console.log('Could not clear channel'));
