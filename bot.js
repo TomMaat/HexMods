@@ -44,7 +44,10 @@ app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 
 // Store tickets and track joined members
 const tickets = new Map();
-const joinedMembers = new Set(); // Track members who already got welcome DM
+const joinedMembers = new Set();
+
+// Helper function for delay
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ============================================
 // HELPER FUNCTIONS
@@ -183,7 +186,6 @@ async function sendVerificationMessage(guild) {
         return;
     }
     
-    // Clear previous messages
     const messages = await verificationChannel.messages.fetch();
     if (messages.size > 0) {
         await verificationChannel.bulkDelete(messages).catch(() => console.log('Could not clear verification channel'));
@@ -234,7 +236,7 @@ client.once('ready', async () => {
         // Setup verification system
         await sendVerificationMessage(guild);
         
-        // Assign unverified role to all existing members (except bots and admins)
+        // Assign unverified role to existing members (with delay to avoid rate limits)
         const unverifiedRole = guild.roles.cache.get(CONFIG.UNVERIFIED_ROLE_ID);
         const verifiedRole = guild.roles.cache.get(CONFIG.VERIFIED_ROLE_ID);
         
@@ -248,7 +250,7 @@ client.once('ready', async () => {
                     try {
                         await member.roles.add(unverifiedRole);
                         count++;
-                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await delay(1000); // 1 second delay between each member
                     } catch (error) {
                         console.log(`Couldn't add role to ${member.user.tag}: ${error.message}`);
                     }
@@ -257,7 +259,7 @@ client.once('ready', async () => {
             console.log(`✅ Added unverified role to ${count} members`);
         }
         
-        // Send welcome DM to existing members (only once)
+        // Send welcome DM to existing members (with delay to avoid rate limits)
         console.log(`🔄 Sending welcome DMs to existing members...`);
         const members = await guild.members.fetch();
         let dmCount = 0;
@@ -280,23 +282,55 @@ client.once('ready', async () => {
                     await member.send({ embeds: [welcomeEmbed] });
                     joinedMembers.add(member.id);
                     dmCount++;
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    await delay(2000); // 2 second delay between DMs (important!)
                 } catch (error) {
                     console.log(`Couldn't DM ${member.user.tag}: ${error.message}`);
                 }
             }
         }
         console.log(`✅ Sent welcome DMs to ${dmCount} members`);
+        
+        // Setup ticket channel
+        const ticketChannel = client.channels.cache.get(CONFIG.TICKET_CREATION_CHANNEL_ID);
+        if (ticketChannel) {
+            const messages = await ticketChannel.messages.fetch();
+            if (messages.size > 0) {
+                await ticketChannel.bulkDelete(messages).catch(() => console.log('Could not clear channel'));
+            }
+            
+            const embed = new EmbedBuilder()
+                .setTitle('🎫 Support Ticket System')
+                .setDescription('Welcome to our support system! Click the button below to get started and select the type of support you need.')
+                .setColor(0x00ff00)
+                .addFields(
+                    { name: '📋 How it works', value: '1. Click the button below\n2. Choose your ticket type\n3. A private channel will be created\n4. Support team will assist you', inline: false },
+                    { name: '⏱️ Response Time', value: 'Typically within 24 hours', inline: true },
+                    { name: '📜 Guidelines', value: 'Be respectful and patient', inline: true }
+                )
+                .setThumbnail(guild.iconURL())
+                .setFooter({ text: 'Support System • Click below to start', iconURL: client.user.displayAvatarURL() })
+                .setTimestamp();
+            
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('create_ticket_menu')
+                        .setLabel('Create Ticket')
+                        .setStyle(ButtonStyle.Success)
+                        .setEmoji('🎫')
+                );
+            
+            await ticketChannel.send({ embeds: [embed], components: [row] });
+            console.log('✅ Ticket creation embed set up!');
+        }
     }
 });
 
 // Welcome DM for new members (only once per member)
 client.on('guildMemberAdd', async (member) => {
-    // Check if already sent welcome DM
     if (joinedMembers.has(member.id)) return;
     
     try {
-        // Add unverified role to new member
         const unverifiedRole = member.guild.roles.cache.get(CONFIG.UNVERIFIED_ROLE_ID);
         if (unverifiedRole) {
             await member.roles.add(unverifiedRole);
@@ -330,7 +364,7 @@ client.on('guildMemberAdd', async (member) => {
                     console.log(`Could not kick ${member.user.tag}: ${error.message}`);
                 }
             }
-        }, 10 * 60 * 1000); // 10 minutes
+        }, 10 * 60 * 1000);
         
     } catch (error) {
         console.log(`Couldn't send welcome DM to ${member.user.tag}: ${error.message}`);
@@ -349,12 +383,10 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ content: '❌ Verification role not configured!', ephemeral: true });
         }
         
-        // Check if already verified
         if (interaction.member.roles.cache.has(verifiedRole.id)) {
             return interaction.reply({ content: '✅ You are already verified!', ephemeral: true });
         }
         
-        // Add verified role, remove unverified role
         await interaction.member.roles.add(verifiedRole);
         if (unverifiedRole) {
             await interaction.member.roles.remove(unverifiedRole);
@@ -368,7 +400,6 @@ client.on('interactionCreate', async (interaction) => {
         
         await interaction.reply({ embeds: [verifyEmbed], ephemeral: true });
         
-        // Log verification
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
@@ -379,7 +410,6 @@ client.on('interactionCreate', async (interaction) => {
             await logChannel.send({ embeds: [logEmbed] });
         }
         
-        // Send welcome message in verification channel
         const welcomeMsg = new EmbedBuilder()
             .setTitle('🎉 New Member Verified!')
             .setDescription(`${interaction.user.toString()} has successfully verified and joined the server!`)
@@ -396,9 +426,7 @@ client.on('interactionCreate', async (interaction) => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     
-    // Check for /botmessage command (case insensitive)
     if (message.content.toLowerCase().startsWith('/botmessage ')) {
-        // Check if user has the required role
         if (!message.member.roles.cache.has(CONFIG.BOTMSG_ROLE_ID)) {
             const errorMsg = await message.reply({
                 content: '❌ You do not have permission to use the `/botmessage` command.',
@@ -411,7 +439,6 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
-        // Extract the message content (remove '/botmessage ' which is 11 characters)
         let msgContent = message.content.slice(11);
         
         if (!msgContent || msgContent.trim() === '') {
@@ -426,24 +453,16 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
-        // Show typing indicator (looks like bot is typing)
         await message.channel.sendTyping();
-        
-        // Wait a bit to make it look natural
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Delete the original command message (no trace of who used it)
+        await delay(500);
         await message.delete().catch(console.error);
         
-        // Create an EMPTY embed with only the message content (no title, no author, no footer)
         const emptyEmbed = new EmbedBuilder()
             .setDescription(msgContent)
-            .setColor(0x2b2d31);  // Discord dark theme color (almost invisible)
+            .setColor(0x2b2d31);
         
-        // Send the embed as the BOT
         await message.channel.send({ embeds: [emptyEmbed] });
         
-        // Log to log channel
         const logChannel = message.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
@@ -465,7 +484,6 @@ client.on('interactionCreate', async (interaction) => {
     const ticketData = tickets.get(interaction.channelId);
     if (!ticketData) return;
     
-    // Claim ticket
     if (interaction.customId === 'claim_ticket') {
         if (!interaction.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID)) {
             return interaction.reply({ content: '❌ You do not have permission to claim tickets!', ephemeral: true });
@@ -506,7 +524,6 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     
-    // Close ticket
     if (interaction.customId === 'close_ticket') {
         const hasPerm = interaction.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID) || ticketData.userId === interaction.user.id;
         
@@ -529,7 +546,6 @@ client.on('interactionCreate', async (interaction) => {
         }, 5000);
     }
     
-    // Get transcript
     if (interaction.customId === 'transcript') {
         const hasPerm = interaction.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID) || ticketData.userId === interaction.user.id;
         
@@ -544,7 +560,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
-// TICKET CREATION - EMBED WITH 3 CATEGORIES
+// SLASH COMMANDS
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
@@ -630,9 +646,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// ============================================
-// REGISTER SLASH COMMANDS
-// ============================================
+// Register slash commands
 async function registerCommands(guildId) {
     const commands = [
         {
@@ -654,50 +668,14 @@ async function registerCommands(guildId) {
     }
 }
 
-// Login
-client.login(CONFIG.TOKEN);
-
 client.once('ready', async () => {
     const guild = client.guilds.cache.first();
     if (guild) {
         await registerCommands(guild.id);
     }
-    
-    const ticketChannel = client.channels.cache.get(CONFIG.TICKET_CREATION_CHANNEL_ID);
-    if (ticketChannel) {
-        const messages = await ticketChannel.messages.fetch();
-        if (messages.size > 0) {
-            await ticketChannel.bulkDelete(messages).catch(() => console.log('Could not clear channel'));
-        }
-        
-        const embed = new EmbedBuilder()
-            .setTitle('🎫 Support Ticket System')
-            .setDescription('Welcome to our support system! Click the button below to get started and select the type of support you need.')
-            .setColor(0x00ff00)
-            .addFields(
-                { name: '📋 How it works', value: '1. Click the button below\n2. Choose your ticket type\n3. A private channel will be created\n4. Support team will assist you', inline: false },
-                { name: '⏱️ Response Time', value: 'Typically within 24 hours', inline: true },
-                { name: '📜 Guidelines', value: 'Be respectful and patient', inline: true }
-            )
-            .setThumbnail(guild.iconURL())
-            .setFooter({ text: 'Support System • Click below to start', iconURL: client.user.displayAvatarURL() })
-            .setTimestamp();
-        
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('create_ticket_menu')
-                    .setLabel('Create Ticket')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('🎫')
-            );
-        
-        await ticketChannel.send({ embeds: [embed], components: [row] });
-        console.log('✅ Ticket creation embed set up!');
-    }
 });
 
-// Handle the main create ticket button that shows the category menu
+// Handle create ticket menu button
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     if (interaction.customId === 'create_ticket_menu') {
@@ -735,3 +713,6 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     }
 });
+
+// Login
+client.login(CONFIG.TOKEN);
