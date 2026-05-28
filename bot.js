@@ -6,10 +6,11 @@ const express = require('express');
 // ============================================
 const CONFIG = {
     // Ticket settings
-    TICKET_CATEGORY_ID: '1509666778916327434',           // Category where tickets will be created
-    SUPPORT_ROLE_ID: '1509664538281381908',           // Role that can see/claim tickets
-    TRANSCRIPT_CHANNEL_ID: '1509665662455251165', // Channel for ticket transcripts
-    LOG_CHANNEL_ID: '1509665549410635787',               // Channel for bot logs
+    TICKET_CATEGORY_ID: 'YOUR_CATEGORY_ID',           // Category where tickets will be created
+    SUPPORT_ROLE_ID: '1509663687449903134',           // Role that can see/claim tickets (for ticket system)
+    MSG_ROLE_ID: 'YOUR_MSG_ROLE_ID_HERE',             // SEPARATE role that can use /msg command
+    TRANSCRIPT_CHANNEL_ID: 'YOUR_TRANSCRIPT_CHANNEL', // Channel for ticket transcripts
+    LOG_CHANNEL_ID: 'YOUR_LOG_CHANNEL',               // Channel for bot logs
     
     // Messages
     TICKET_CREATION_CHANNEL_ID: 'YOUR_TICKET_CHANNEL', // Channel where ticket button appears
@@ -149,11 +150,12 @@ client.once('ready', async () => {
         client.user.setActivity('Tickets System', { type: 'WATCHING' });
     }, 300000);
     
-    // Send welcome DM to all members (existing and new)
+    // Send welcome DM to all existing members
     const guild = client.guilds.cache.first();
     if (guild) {
         console.log(`🔄 Sending welcome DMs to existing members...`);
         const members = await guild.members.fetch();
+        let dmCount = 0;
         members.forEach(async (member) => {
             if (!member.user.bot) {
                 try {
@@ -165,13 +167,14 @@ client.once('ready', async () => {
                         .setTimestamp();
                     
                     await member.send({ embeds: [welcomeEmbed] });
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Rate limit avoidance
+                    dmCount++;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (error) {
                     console.log(`Couldn't DM ${member.user.tag}: ${error.message}`);
                 }
             }
         });
-        console.log(`✅ Finished sending welcome DMs`);
+        console.log(`✅ Sent welcome DMs to ${dmCount} members`);
     }
 });
 
@@ -192,35 +195,74 @@ client.on('guildMemberAdd', async (member) => {
     }
 });
 
-// Handle the /msg command
+// ============================================
+// /MSG COMMAND HANDLER - SEPARATE ROLE
+// ============================================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     
     // Check for /msg command
     if (message.content.startsWith('/msg ')) {
-        const supportRole = message.guild.roles.cache.get(CONFIG.SUPPORT_ROLE_ID);
+        // Check if user has the SPECIFIC MSG role (not the support role)
+        if (!message.member.roles.cache.has(CONFIG.MSG_ROLE_ID)) {
+            // User doesn't have permission - send ephemeral-like message that auto-deletes
+            const errorMsg = await message.reply({
+                content: '❌ You do not have permission to use the `/msg` command. This requires a specific role.',
+                allowedMentions: { repliedUser: false }
+            });
+            // Delete the command message and error message after 3 seconds
+            setTimeout(async () => {
+                await message.delete().catch(() => {});
+                await errorMsg.delete().catch(() => {});
+            }, 3000);
+            return;
+        }
         
-        // Check if user has the support role
-        if (message.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID)) {
-            const msgContent = message.content.slice(5);
-            
-            const embed = new EmbedBuilder()
-                .setTitle('📨 Message from Support')
-                .setDescription(msgContent)
-                .setColor(0x0099ff)
-                .setFooter({ text: `Sent by ${message.author.tag}`, iconURL: message.author.displayAvatarURL() })
+        // User has permission - process the command
+        const msgContent = message.content.slice(5); // Remove '/msg ' prefix
+        
+        if (!msgContent || msgContent.trim() === '') {
+            const errorMsg = await message.reply({
+                content: '❌ Please provide a message to send. Usage: `/msg your message here`',
+                allowedMentions: { repliedUser: false }
+            });
+            setTimeout(async () => {
+                await message.delete().catch(() => {});
+                await errorMsg.delete().catch(() => {});
+            }, 3000);
+            return;
+        }
+        
+        // Create embed for the message
+        const embed = new EmbedBuilder()
+            .setTitle('📨 Message from Support')
+            .setDescription(msgContent)
+            .setColor(0x0099ff)
+            .setFooter({ text: `Sent by ${message.author.tag}`, iconURL: message.author.displayAvatarURL() })
+            .setTimestamp();
+        
+        // Delete the original command message (no trace of user using /msg)
+        await message.delete().catch(console.error);
+        
+        // Send the embed as the BOT (not as user)
+        await message.channel.send({ embeds: [embed] });
+        
+        // Optional: Log to log channel
+        const logChannel = message.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+        if (logChannel) {
+            const logEmbed = new EmbedBuilder()
+                .setTitle('📝 /msg Command Used')
+                .setDescription(`**User:** ${message.author.tag} (${message.author.id})\n**Channel:** ${message.channel.name}\n**Message:** ${msgContent.substring(0, 500)}`)
+                .setColor(0xffaa00)
                 .setTimestamp();
-            
-            // Delete the command message
-            await message.delete().catch(console.error);
-            
-            // Send as bot in the channel
-            await message.channel.send({ embeds: [embed] });
+            await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
         }
     }
 });
 
-// Handle button interactions
+// ============================================
+// BUTTON INTERACTIONS
+// ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
@@ -294,7 +336,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// Ticket creation command
+// Ticket creation command (slash command)
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     
@@ -316,6 +358,10 @@ client.on('interactionCreate', async (interaction) => {
             );
         
         await interaction.reply({ embeds: [embed], components: [row] });
+    }
+    
+    if (interaction.commandName === 'ping') {
+        await interaction.reply(`🏓 Pong! Latency: ${Date.now() - interaction.createdTimestamp}ms`);
     }
 });
 
@@ -381,6 +427,12 @@ client.once('ready', async () => {
     // Setup ticket creation button in specific channel
     const ticketChannel = client.channels.cache.get(CONFIG.TICKET_CREATION_CHANNEL_ID);
     if (ticketChannel) {
+        // Clear previous messages
+        const messages = await ticketChannel.messages.fetch();
+        if (messages.size > 0) {
+            await ticketChannel.bulkDelete(messages).catch(() => console.log('Could not clear channel'));
+        }
+        
         const embed = new EmbedBuilder()
             .setTitle('🎫 Support Tickets')
             .setDescription('Click the button below to create a support ticket.\nOur team will help you as soon as possible.')
@@ -397,9 +449,7 @@ client.once('ready', async () => {
                     .setEmoji('🎫')
             );
         
-        // Clear previous messages and send new one
-        const messages = await ticketChannel.messages.fetch();
-        await ticketChannel.bulkDelete(messages);
         await ticketChannel.send({ embeds: [embed], components: [row] });
+        console.log('✅ Ticket creation message set up!');
     }
 });
