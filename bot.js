@@ -6,14 +6,14 @@ const express = require('express');
 // ============================================
 const CONFIG = {
     // Ticket settings
-    TICKET_CATEGORY_ID: '1509665345861058601',           // Category where tickets will be created
+    TICKET_CATEGORY_ID: 'YOUR_CATEGORY_ID',           // Category where tickets will be created
     SUPPORT_ROLE_ID: '1509664538281381908',           // Role that can see/claim tickets (for ticket system)
-    MSG_ROLE_ID: '1509663687449903134',             // SEPARATE role that can use /msg command
-    TRANSCRIPT_CHANNEL_ID: '1509665662455251165', // Channel for ticket transcripts
-    LOG_CHANNEL_ID: '1509665549410635787',               // Channel for bot logs
+    MSG_ROLE_ID: 'YOUR_MSG_ROLE_ID_HERE',             // SEPARATE role that can use /msg command
+    TRANSCRIPT_CHANNEL_ID: 'YOUR_TRANSCRIPT_CHANNEL', // Channel for ticket transcripts
+    LOG_CHANNEL_ID: 'YOUR_LOG_CHANNEL',               // Channel for bot logs
     
     // Messages
-    TICKET_CREATION_CHANNEL_ID: '1509666778916327434', // Channel where ticket button appears
+    TICKET_CREATION_CHANNEL_ID: 'YOUR_TICKET_CHANNEL', // Channel where ticket button appears
     
     // Bot settings
     TOKEN: 'YOUR_BOT_TOKEN_HERE'
