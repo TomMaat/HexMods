@@ -125,7 +125,7 @@ async function registerCommands(guild) {
         },
         {
             name: 'purchase',
-            description: 'Purchase a product for a user',
+            description: 'Purchase a product for a user (admin only)',
             options: [
                 { name: 'user', description: 'The user who bought the product', type: 6, required: true }
             ]
@@ -550,7 +550,7 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     
-    // /purchase command - Shows dropdown menu of products
+    // /purchase command - Shows dropdown menu of products (Admin only)
     if (interaction.commandName === 'purchase') {
         if (!interaction.member.roles.cache.has(CONFIG.PURCHASE_ROLE_ID)) {
             await interaction.reply({ content: '❌ You do not have permission to purchase products.', flags: 64 });
@@ -632,34 +632,16 @@ client.on('interactionCreate', async (interaction) => {
             .addFields(
                 { name: '👤 Purchased by', value: buyer.user.tag, inline: true },
                 { name: '🛒 Product', value: purchase.name, inline: true },
-                { name: '📅 Purchased at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+                { name: '📅 Purchased at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                { name: '📦 How to claim', value: `The buyer can claim their product in their ticket channel.`, inline: false }
             )
-            .setFooter({ text: 'Product delivered via DM', iconURL: client.user.displayAvatarURL() })
+            .setFooter({ text: 'Purchase completed by ' + interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
             .setTimestamp();
         
         await purchaseChannel.send({ embeds: [embed] });
     }
     
-    // Send DM to the buyer with the product content
-    try {
-        const dmEmbed = new EmbedBuilder()
-            .setTitle(`🛍️ **${purchase.name}**`)
-            .setDescription(purchase.content)
-            .setColor(0x00ff00)
-            .setThumbnail(LOGO_URL)
-            .addFields(
-                { name: '📅 Purchased on', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
-                { name: '🔒 Note', value: 'Keep this message private. Do not share with others.', inline: true }
-            )
-            .setFooter({ text: 'Thank you for your purchase!', iconURL: client.user.displayAvatarURL() })
-            .setTimestamp();
-        
-        await buyer.send({ embeds: [dmEmbed] });
-        await interaction.reply({ content: `✅ **${purchase.name}** has been sent to ${buyer.user.tag}'s DMs!`, flags: 64 });
-    } catch (error) {
-        await interaction.reply({ content: `❌ Could not send DM to ${buyer.user.tag}. Please enable DMs from server members.`, flags: 64 });
-    }
-    
+    await interaction.reply({ content: `✅ **${purchase.name}** has been purchased for ${buyer.user.tag}! They can claim it in their ticket channel.`, flags: 64 });
     setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
     
     // Log to log channel
