@@ -58,6 +58,10 @@ app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 const tickets = new Map();
 const joinedMembers = new Set();
 
+// Logo URL - Change this to your own logo!
+const LOGO_URL = 'https://cdn.discordapp.com/attachments/1328475513993101386/1331748138593943614/hexmods.png';
+const BANNER_URL = 'https://i.imgur.com/8Y5Qm7M.png';
+
 // ============================================
 // UPDATE MEMBER COUNT
 // ============================================
@@ -145,7 +149,8 @@ async function sendRoleClaimMessage(guild) {
         .setTitle('🌟 **CLAIM YOUR ROLES** 🌟')
         .setDescription('> *Click any button below to get access to specific content!*\n> *You can claim multiple roles at once.*')
         .setColor(0x5865F2)
-        .setThumbnail(guild.iconURL())
+        .setThumbnail(LOGO_URL)
+        .setImage(BANNER_URL)
         .addFields(
             { name: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', value: '⬇️ **AVAILABLE ROLES** ⬇️', inline: false },
             { name: '🎭 **Spoof Accounts**', value: 'Access to spoof account resources', inline: true },
@@ -176,7 +181,7 @@ async function sendRoleClaimMessage(guild) {
 }
 
 // ============================================
-// VERIFICATION SYSTEM
+// VERIFICATION SYSTEM (NO AUTO-KICK)
 // ============================================
 async function sendVerificationMessage(guild) {
     const channel = guild.channels.cache.get(CONFIG.VERIFICATION_CHANNEL_ID);
@@ -188,11 +193,11 @@ async function sendVerificationMessage(guild) {
         .setTitle('✅ **VERIFICATION REQUIRED**')
         .setDescription('Welcome to the server! Please verify yourself to access all channels.\n\n*Click the button below to get started.*')
         .setColor(0x00ff00)
+        .setThumbnail(LOGO_URL)
         .addFields(
             { name: '📋 Why verify?', value: 'Keeps the server safe from bots and spam.', inline: false },
-            { name: '⚠️ Time Limit', value: 'You have 24 hours to verify before being kicked.', inline: true }
+            { name: '🔓 What happens after?', value: 'You will get access to all channels!', inline: true }
         )
-        .setThumbnail(guild.iconURL())
         .setFooter({ text: 'Click to verify', iconURL: client.user.displayAvatarURL() })
         .setTimestamp();
     
@@ -228,7 +233,7 @@ async function createTicket(user, interaction, categoryId, type) {
         .setTitle(`🎫 ${type} Ticket`)
         .setDescription(`Welcome ${user}! Your ticket has been created.\n\n**Type:** ${type}\n**Created:** <t:${Math.floor(Date.now() / 1000)}:F>`)
         .setColor(0x00ff00)
-        .setThumbnail(guild.iconURL())
+        .setThumbnail(LOGO_URL)
         .addFields(
             { name: '📌 Instructions', value: '• **Claim Ticket** - Take ownership\n• **Close Ticket** - Delete ticket\n• **Get Transcript** - Save chat log', inline: false },
             { name: '👤 User', value: user.toString(), inline: true }
@@ -267,7 +272,7 @@ async function createPurchaseTicket(user, interaction, productName, price) {
         .setTitle(`🛒 Purchase Ticket`)
         .setDescription(`Welcome ${user}! Your purchase ticket has been created.\n\n**Product:** ${productName}\n**Price:** ${price}\n**Created:** <t:${Math.floor(Date.now() / 1000)}:F>`)
         .setColor(0x00ff00)
-        .setThumbnail(guild.iconURL())
+        .setThumbnail(LOGO_URL)
         .addFields(
             { name: '📌 Instructions', value: '• **Claim Ticket** - Take ownership\n• **Close Ticket** - Delete ticket\n• **Get Transcript** - Save chat log', inline: false },
             { name: '👤 User', value: user.toString(), inline: true },
@@ -330,12 +335,13 @@ client.once('ready', async () => {
             const embed = new EmbedBuilder()
                 .setTitle('🎫 **SUPPORT TICKET SYSTEM**')
                 .setDescription('Need help? Click the button below to create a support ticket.')
-                .setColor(0x00ff00)
+                .setColor(0x5865F2)
+                .setThumbnail(LOGO_URL)
+                .setImage(BANNER_URL)
                 .addFields(
                     { name: '📋 How it works', value: '1. Click "Create Ticket"\n2. Choose your category\n3. A private channel will be created\n4. Support will assist you', inline: false },
                     { name: '⏱️ Response Time', value: 'Usually within 24 hours', inline: true }
                 )
-                .setThumbnail(guild.iconURL())
                 .setFooter({ text: 'Support System', iconURL: client.user.displayAvatarURL() })
                 .setTimestamp();
             const row = new ActionRowBuilder().addComponents(
@@ -388,6 +394,7 @@ client.on('interactionCreate', async (interaction) => {
             .setTitle(name)
             .setDescription(desc)
             .setColor(inStock ? 0x00ff00 : 0xff0000)
+            .setThumbnail(LOGO_URL)
             .addFields(
                 { name: '💰 Price', value: price, inline: true },
                 { name: '📦 Stock', value: inStock ? '✅ IN STOCK' : '❌ OUT OF STOCK', inline: true },
@@ -396,7 +403,6 @@ client.on('interactionCreate', async (interaction) => {
             )
             .setTimestamp();
         if (img?.startsWith('http')) embed.setImage(img);
-        embed.setThumbnail('https://cdn-icons-png.flaticon.com/512/2331/2331970.png');
         
         const btnId = `buy_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
         const row = new ActionRowBuilder().addComponents(
@@ -459,6 +465,7 @@ client.on('interactionCreate', async (interaction) => {
             .setTitle(`📝 Review for ${product}`)
             .setDescription(`"${reviewText}"`)
             .setColor(color)
+            .setThumbnail(LOGO_URL)
             .addFields(
                 { name: '⭐ Rating', value: `${starsDisplay} (${stars}/5)`, inline: true },
                 { name: '🛒 Product', value: product, inline: true },
@@ -571,6 +578,7 @@ client.on('interactionCreate', async (interaction) => {
             .setTitle('❓ Product Info')
             .setDescription('Click **Buy Now** to create a ticket and our team will assist you.')
             .setColor(0x0099ff)
+            .setThumbnail(LOGO_URL)
             .setTimestamp();
         await interaction.reply({ embeds: [embed], flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 10000);
@@ -587,9 +595,10 @@ client.on('interactionCreate', async (interaction) => {
         if (unverified) await interaction.member.roles.remove(unverified);
         
         const embed = new EmbedBuilder()
-            .setTitle('✅ Verified!')
-            .setDescription(`Welcome ${interaction.user}! You now have access.`)
+            .setTitle('✅ **Verification Successful!**')
+            .setDescription(`Welcome ${interaction.user}! You now have access to all channels.`)
             .setColor(0x00ff00)
+            .setThumbnail(LOGO_URL)
             .setTimestamp();
         await interaction.reply({ embeds: [embed], flags: 64 });
     }
@@ -597,21 +606,26 @@ client.on('interactionCreate', async (interaction) => {
     // Create Ticket Menu
     if (interaction.customId === 'create_ticket_menu') {
         const embed = new EmbedBuilder()
-            .setTitle('🎫 Create Ticket')
-            .setDescription('Select a category:')
-            .setColor(0x00ff00)
+            .setTitle('🎫 **CREATE A SUPPORT TICKET**')
+            .setDescription('Please select the category that best fits your needs:')
+            .setColor(0x5865F2)
+            .setThumbnail(LOGO_URL)
             .addFields(
-                { name: '📋 General Question', value: 'General inquiries', inline: false },
-                { name: '💰 Purchase', value: 'Payment issues', inline: false },
-                { name: '🛡️ Buy Support', value: 'Premium support', inline: false }
+                { name: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', value: '⬇️ **SELECT A CATEGORY** ⬇️', inline: false },
+                { name: '📋 **General Question**', value: 'General inquiries, questions, or feedback', inline: false },
+                { name: '💰 **Purchase**', value: 'Payment issues, transaction problems, or billing', inline: false },
+                { name: '🛡️ **Buy Support**', value: 'Premium support for paid services', inline: false }
             )
+            .setFooter({ text: 'Choose carefully - this cannot be changed', iconURL: LOGO_URL })
             .setTimestamp();
+        
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('general_ticket').setLabel('General Question').setStyle(ButtonStyle.Primary).setEmoji('📋'),
             new ButtonBuilder().setCustomId('purchase_ticket').setLabel('Purchase').setStyle(ButtonStyle.Success).setEmoji('💰'),
             new ButtonBuilder().setCustomId('buysupport_ticket').setLabel('Buy Support').setStyle(ButtonStyle.Danger).setEmoji('🛡️')
         );
         await interaction.reply({ embeds: [embed], components: [row], flags: 64 });
+        return;
     }
     
     // Ticket Type Selection
@@ -667,7 +681,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
-// GUILD MEMBER EVENTS
+// GUILD MEMBER EVENTS (NO AUTO-KICK)
 // ============================================
 client.on('guildMemberAdd', async (member) => {
     await updateMemberCount(member.guild);
@@ -678,26 +692,18 @@ client.on('guildMemberAdd', async (member) => {
         if (unverified) await member.roles.add(unverified);
         
         const embed = new EmbedBuilder()
-            .setTitle('🎉 Welcome to HexMods!')
-            .setDescription(`Hello ${member.user.username}! Welcome!\n\nVerify in <#${CONFIG.VERIFICATION_CHANNEL_ID}> to access channels.`)
+            .setTitle('🎉 **Welcome to HexMods!** 🎉')
+            .setDescription(`Hello ${member.user.username}! Welcome to our community.\n\nPlease verify yourself in <#${CONFIG.VERIFICATION_CHANNEL_ID}> to access all channels.`)
             .setColor(0x00ff00)
+            .setThumbnail(LOGO_URL)
             .addFields(
-                { name: '⏱️ Time Limit', value: '24 hours to verify', inline: true },
-                { name: '📌 Help', value: 'Use the ticket system', inline: true }
+                { name: '📌 Need Help?', value: 'Use the **Ticket System** to create a support ticket.', inline: true },
+                { name: '✅ Verify', value: 'Go to the verification channel and click the button!', inline: true }
             )
-            .setThumbnail(member.guild.iconURL())
             .setTimestamp();
         
         await member.send({ embeds: [embed] });
         joinedMembers.add(member.id);
-        
-        setTimeout(async () => {
-            const fresh = await member.guild.members.fetch(member.id).catch(() => null);
-            if (fresh && !fresh.roles.cache.has(CONFIG.VERIFIED_ROLE_ID)) {
-                await fresh.kick('Not verified in 24h').catch(() => {});
-                await updateMemberCount(member.guild);
-            }
-        }, 24 * 60 * 60 * 1000);
     } catch (error) {}
 });
 
