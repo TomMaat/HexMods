@@ -13,6 +13,8 @@ const CONFIG = {
     SEND_ROLE_ID: process.env.SEND_ROLE_ID,
     PRODUCT_ROLE_ID: process.env.PRODUCT_ROLE_ID,
     CLEAR_ROLE_ID: process.env.CLEAR_ROLE_ID,
+    REVIEW_ROLE_ID: process.env.REVIEW_ROLE_ID,  // NEW: Role for /review command
+    REVIEW_CHANNEL_ID: process.env.REVIEW_CHANNEL_ID,  // NEW: Channel where reviews are posted
     TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
     
@@ -137,6 +139,37 @@ async function registerCommands(guild) {
                     required: true
                 }
             ]
+        },
+        {
+            name: 'review',
+            description: 'Leave a review for a product',
+            options: [
+                {
+                    name: 'stars',
+                    description: 'Number of stars (1-5)',
+                    type: 4,
+                    required: true,
+                    choices: [
+                        { name: '⭐ 1 star', value: 1 },
+                        { name: '⭐⭐ 2 stars', value: 2 },
+                        { name: '⭐⭐⭐ 3 stars', value: 3 },
+                        { name: '⭐⭐⭐⭐ 4 stars', value: 4 },
+                        { name: '⭐⭐⭐⭐⭐ 5 stars', value: 5 }
+                    ]
+                },
+                {
+                    name: 'product',
+                    description: 'What product did you buy?',
+                    type: 3,
+                    required: true
+                },
+                {
+                    name: 'review',
+                    description: 'Your review message',
+                    type: 3,
+                    required: true
+                }
+            ]
         }
     ];
     
@@ -151,7 +184,7 @@ async function deleteAllSlashCommands(guild) {
     try {
         const commands = await guild.commands.fetch();
         for (const command of commands.values()) {
-            if (command.name !== 'send' && command.name !== 'product' && command.name !== 'clear') {
+            if (command.name !== 'send' && command.name !== 'product' && command.name !== 'clear' && command.name !== 'review') {
                 await guild.commands.delete(command.id);
                 console.log(`🗑️ Deleted: /${command.name}`);
             }
@@ -432,17 +465,13 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
         
-        // Send the message
         await interaction.channel.send(messageContent);
-        
-        // Acknowledge and immediately delete (no visible trace)
         await interaction.deferReply({ ephemeral: true });
         await interaction.deleteReply().catch(() => {});
         
-        // Log only
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
-            logChannel.send({ content: `📝 /send by ${interaction.user.tag} in ${interaction.channel.name}: ${messageContent.substring(0, 100)}` }).catch(() => {});
+            logChannel.send({ content: `📝 /send by ${interaction.user.tag} in ${interaction.channel.name}` }).catch(() => {});
         }
     }
     
@@ -466,7 +495,6 @@ client.on('interactionCreate', async (interaction) => {
         const stockStatus = inStock ? '✅ **IN STOCK**' : '❌ **OUT OF STOCK**';
         const stockColor = inStock ? 0x00ff00 : 0xff0000;
         
-        // Create product embed
         const productEmbed = new EmbedBuilder()
             .setTitle(`${productName}`)
             .setDescription(description)
@@ -503,14 +531,10 @@ client.on('interactionCreate', async (interaction) => {
         if (!client.productData) client.productData = new Map();
         client.productData.set(buttonId, { name: productName, price: price });
         
-        // Send the product embed WITHOUT any visible user message
         await interaction.channel.send({ embeds: [productEmbed], components: [row] });
-        
-        // Acknowledge and immediately delete (NO "user used product" message)
         await interaction.deferReply({ ephemeral: true });
         await interaction.deleteReply().catch(() => {});
         
-        // Log only
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             logChannel.send({ content: `📝 /product by ${interaction.user.tag}: ${productName} - ${price}` }).catch(() => {});
@@ -557,6 +581,65 @@ client.on('interactionCreate', async (interaction) => {
             setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
         }
     }
+    
+    // ============================================
+    // /REVIEW COMMAND
+    // ============================================
+    if (interaction.commandName === 'review') {
+        if (!interaction.member.roles.cache.has(CONFIG.REVIEW_ROLE_ID)) {
+            await interaction.reply({ content: '❌ You do not have permission to use `/review`.', ephemeral: true });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            return;
+        }
+        
+        const stars = interaction.options.getInteger('stars');
+        const product = interaction.options.getString('product');
+        const reviewText = interaction.options.getString('review');
+        
+        // Create star rating display
+        const starDisplay = '⭐'.repeat(stars) + '☆'.repeat(5 - stars);
+        
+        // Get star color based on rating
+        let starColor = 0xff0000; // Red for 1-2 stars
+        if (stars === 3) starColor = 0xffaa00; // Orange for 3 stars
+        if (stars >= 4) starColor = 0x00ff00; // Green for 4-5 stars
+        
+        // Create review embed
+        const reviewEmbed = new EmbedBuilder()
+            .setTitle(`📝 Review for ${product}`)
+            .setDescription(`"${reviewText}"`)
+            .setColor(starColor)
+            .addFields(
+                { name: '⭐ Rating', value: `${starDisplay} (${stars}/5)`, inline: true },
+                { name: '🛒 Product', value: product, inline: true },
+                { name: '👤 Reviewer', value: interaction.user.tag, inline: true }
+            )
+            .setThumbnail(interaction.user.displayAvatarURL())
+            .setTimestamp();
+        
+        // Send to review channel
+        const reviewChannel = interaction.guild.channels.cache.get(CONFIG.REVIEW_CHANNEL_ID);
+        if (!reviewChannel) {
+            await interaction.reply({ content: '❌ Review channel not configured!', ephemeral: true });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            return;
+        }
+        
+        await reviewChannel.send({ embeds: [reviewEmbed] });
+        
+        // Acknowledge the user (ephemeral, will be deleted)
+        await interaction.reply({ 
+            content: `✅ Your review for **${product}** has been posted! Thank you for your feedback!`, 
+            ephemeral: true 
+        });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+        
+        // Log to log channel
+        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+        if (logChannel) {
+            logChannel.send({ content: `📝 /review by ${interaction.user.tag}: ${stars} stars for ${product}` }).catch(() => {});
+        }
+    }
 });
 
 // ============================================
@@ -570,7 +653,6 @@ client.on('interactionCreate', async (interaction) => {
         const productName = productData?.name || 'Unknown Product';
         const productPrice = productData?.price || 'Unknown Price';
         
-        // Check for existing ticket
         let existingTicket = null;
         for (const [channelId, data] of tickets.entries()) {
             if (data.userId === interaction.user.id) {
@@ -749,47 +831,4 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
     if (interaction.customId === 'create_ticket_menu') {
-        const embed = new EmbedBuilder()
-            .setTitle('🎫 Create a Support Ticket')
-            .setDescription('Select the category:')
-            .setColor(0x00ff00)
-            .addFields(
-                { name: '📋 General Question', value: 'General inquiries', inline: false },
-                { name: '💰 Purchase', value: 'Payment issues', inline: false },
-                { name: '🛡️ Buy Support', value: 'Premium support', inline: false }
-            )
-            .setTimestamp();
-        
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder().setCustomId('general_ticket').setLabel('General Question').setStyle(ButtonStyle.Primary).setEmoji('📋'),
-                new ButtonBuilder().setCustomId('purchase_ticket').setLabel('Purchase').setStyle(ButtonStyle.Success).setEmoji('💰'),
-                new ButtonBuilder().setCustomId('buysupport_ticket').setLabel('Buy Support').setStyle(ButtonStyle.Danger).setEmoji('🛡️')
-            );
-        
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-        return;
-    }
-    
-    let categoryId = null, ticketType = null;
-    if (interaction.customId === 'general_ticket') { categoryId = CONFIG.GENERAL_CATEGORY_ID; ticketType = 'General Question'; }
-    else if (interaction.customId === 'purchase_ticket') { categoryId = CONFIG.PURCHASE_CATEGORY_ID; ticketType = 'Purchase'; }
-    else if (interaction.customId === 'buysupport_ticket') { categoryId = CONFIG.BUY_SUPPORT_CATEGORY_ID; ticketType = 'Buy Support'; }
-    
-    if (categoryId && ticketType) {
-        for (const [channelId, data] of tickets.entries()) {
-            if (data.userId === interaction.user.id) {
-                const existing = interaction.guild.channels.cache.get(channelId);
-                if (existing) {
-                    return interaction.reply({ content: `❌ You already have a ticket: ${existing.toString()}`, ephemeral: true });
-                }
-            }
-        }
-        
-        await interaction.reply({ content: `🎫 Creating ${ticketType} ticket...`, ephemeral: true });
-        const channel = await createTicketChannel(interaction.user, interaction, categoryId, ticketType);
-        await interaction.editReply({ content: `✅ Ticket created: ${channel.toString()}` });
-    }
-});
-
-client.login(CONFIG.TOKEN);
+        const embed =
