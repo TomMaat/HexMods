@@ -12,7 +12,7 @@ const CONFIG = {
     SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509664538281381908',
     SEND_ROLE_ID: process.env.SEND_ROLE_ID,
     PRODUCT_ROLE_ID: process.env.PRODUCT_ROLE_ID,
-    CLEAR_ROLE_ID: process.env.CLEAR_ROLE_ID,  // NEW: Role for /clear command
+    CLEAR_ROLE_ID: process.env.CLEAR_ROLE_ID,
     TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
     
@@ -88,7 +88,7 @@ async function registerCommands(guild) {
         },
         {
             name: 'product',
-            description: 'Create a beautiful product embed',
+            description: 'Create a product embed',
             options: [
                 {
                     name: 'name',
@@ -108,19 +108,19 @@ async function registerCommands(guild) {
                 },
                 {
                     name: 'price',
-                    description: 'The product price (e.g., $19.99 or 20 EUR)',
+                    description: 'The product price',
                     type: 3,
                     required: true
                 },
                 {
                     name: 'description',
-                    description: 'Optional product description',
+                    description: 'Product description',
                     type: 3,
                     required: false
                 },
                 {
                     name: 'image',
-                    description: 'Optional image URL for the product',
+                    description: 'Image URL for the product',
                     type: 3,
                     required: false
                 }
@@ -141,7 +141,7 @@ async function registerCommands(guild) {
     ];
     
     await guild.commands.set(commands);
-    console.log('✅ Slash commands /send, /product, and /clear registered!');
+    console.log('✅ Slash commands registered!');
 }
 
 // ============================================
@@ -153,17 +153,17 @@ async function deleteAllSlashCommands(guild) {
         for (const command of commands.values()) {
             if (command.name !== 'send' && command.name !== 'product' && command.name !== 'clear') {
                 await guild.commands.delete(command.id);
-                console.log(`🗑️ Deleted slash command: /${command.name}`);
+                console.log(`🗑️ Deleted: /${command.name}`);
             }
         }
-        console.log('✅ Old slash commands removed!');
+        console.log('✅ Old commands removed!');
     } catch (error) {
-        console.log('❌ Error deleting slash commands:', error.message);
+        console.log('❌ Error:', error.message);
     }
 }
 
 // ============================================
-// CREATE TICKET CHANNEL DIRECTLY
+// CREATE DIRECT PURCHASE TICKET
 // ============================================
 async function createDirectTicket(user, interaction, productName, productPrice) {
     const guild = interaction.guild;
@@ -219,7 +219,7 @@ async function createDirectTicket(user, interaction, productName, productPrice) 
 }
 
 // ============================================
-// TICKET HELPER FUNCTIONS
+// REGULAR TICKET FUNCTIONS
 // ============================================
 async function createTicketChannel(user, interaction, categoryId, ticketType) {
     const guild = interaction.guild;
@@ -253,13 +253,12 @@ async function createTicketChannel(user, interaction, categoryId, ticketType) {
     
     const embed = new EmbedBuilder()
         .setTitle(`🎫 ${ticketType} Ticket`)
-        .setDescription(`Welcome ${user.toString()}! Your ticket has been created.\n\n**Ticket Type:** ${ticketType}\n**Created:** <t:${Math.floor(Date.now() / 1000)}:F>\n\nSupport team will assist you shortly. Use the buttons below to manage this ticket.`)
+        .setDescription(`Welcome ${user.toString()}! Your ticket has been created.\n\n**Ticket Type:** ${ticketType}\n**Created:** <t:${Math.floor(Date.now() / 1000)}:F>\n\nSupport team will assist you shortly.`)
         .setColor(0x00ff00)
         .setThumbnail(guild.iconURL())
         .addFields(
             { name: '📌 Instructions', value: '• Click **Claim Ticket** to take ownership\n• Click **Close Ticket** to delete this ticket\n• Click **Get Transcript** to save the conversation', inline: false },
-            { name: '👤 User', value: user.toString(), inline: true },
-            { name: '🆔 Ticket ID', value: channel.id, inline: true }
+            { name: '👤 User', value: user.toString(), inline: true }
         )
         .setFooter({ text: `Ticket System • ${ticketType}`, iconURL: client.user.displayAvatarURL() })
         .setTimestamp();
@@ -411,59 +410,50 @@ client.once('ready', async () => {
     }
     
     console.log('✅ Bot is fully ready!');
-    console.log('📌 Use /send <message> - Send a message as the bot');
-    console.log('📌 Use /product <name> <instock> <price> - Create a product embed');
-    console.log('📌 Use /clear <amount> - Clear messages (requires CLEAR_ROLE_ID)');
 });
 
 // ============================================
-// /SEND SLASH COMMAND
+// /SEND COMMAND - NO VISIBLE MESSAGES
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     
     if (interaction.commandName === 'send') {
         if (!interaction.member.roles.cache.has(CONFIG.SEND_ROLE_ID)) {
-            return interaction.reply({ 
-                content: '❌ You do not have permission to use `/send`.', 
-                ephemeral: true 
-            });
+            await interaction.reply({ content: '❌ No permission.', ephemeral: true });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
+            return;
         }
         
         const messageContent = interaction.options.getString('message');
-        
         if (!messageContent || messageContent.trim() === '') {
-            return interaction.reply({ 
-                content: '❌ Please provide a message to send.', 
-                ephemeral: true 
-            });
+            await interaction.reply({ content: '❌ Provide a message.', ephemeral: true });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
+            return;
         }
         
+        // Send the message
         await interaction.channel.send(messageContent);
         
+        // Acknowledge and immediately delete (no visible trace)
         await interaction.deferReply({ ephemeral: true });
-        await interaction.deleteReply();
+        await interaction.deleteReply().catch(() => {});
         
+        // Log only
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
-            const logEmbed = new EmbedBuilder()
-                .setTitle('📝 /send Command Used')
-                .setDescription(`**User:** ${interaction.user.tag}\n**Channel:** ${interaction.channel.name}\n**Message:** ${messageContent.substring(0, 500)}`)
-                .setColor(0xffaa00)
-                .setTimestamp();
-            await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+            logChannel.send({ content: `📝 /send by ${interaction.user.tag} in ${interaction.channel.name}: ${messageContent.substring(0, 100)}` }).catch(() => {});
         }
     }
     
     // ============================================
-    // /PRODUCT SLASH COMMAND - NO AUTHOR NAME
+    // /PRODUCT COMMAND - NO VISIBLE USER MESSAGE
     // ============================================
     if (interaction.commandName === 'product') {
         if (!interaction.member.roles.cache.has(CONFIG.PRODUCT_ROLE_ID)) {
-            return interaction.reply({ 
-                content: '❌ You do not have permission to use `/product`.', 
-                ephemeral: true 
-            });
+            await interaction.reply({ content: '❌ No permission.', ephemeral: true });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
+            return;
         }
         
         const productName = interaction.options.getString('name');
@@ -472,17 +462,11 @@ client.on('interactionCreate', async (interaction) => {
         const description = interaction.options.getString('description') || 'No description provided';
         const imageUrl = interaction.options.getString('image');
         
-        // Store product info for the button handler
-        const productInfo = { name: productName, price: price };
-        
-        // Check if in stock
         const inStock = instockRaw.toLowerCase() === 'yes';
-        
-        // Create stock status text
         const stockStatus = inStock ? '✅ **IN STOCK**' : '❌ **OUT OF STOCK**';
         const stockColor = inStock ? 0x00ff00 : 0xff0000;
         
-        // Create clean product embed (NO author, NO footer with user name)
+        // Create product embed
         const productEmbed = new EmbedBuilder()
             .setTitle(`${productName}`)
             .setDescription(description)
@@ -495,17 +479,13 @@ client.on('interactionCreate', async (interaction) => {
             )
             .setTimestamp();
         
-        // Add product image if provided
         if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
             productEmbed.setImage(imageUrl);
         }
-        
         productEmbed.setThumbnail('https://cdn-icons-png.flaticon.com/512/2331/2331970.png');
         
-        // Generate unique button ID
         const buttonId = `buy_now_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
         
-        // Add action buttons
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
@@ -520,79 +500,61 @@ client.on('interactionCreate', async (interaction) => {
                     .setEmoji('❓')
             );
         
-        // Store product data temporarily
         if (!client.productData) client.productData = new Map();
         client.productData.set(buttonId, { name: productName, price: price });
         
-        await interaction.reply({ embeds: [productEmbed], components: [row] });
+        // Send the product embed WITHOUT any visible user message
+        await interaction.channel.send({ embeds: [productEmbed], components: [row] });
         
-        // Log to log channel only
+        // Acknowledge and immediately delete (NO "user used product" message)
+        await interaction.deferReply({ ephemeral: true });
+        await interaction.deleteReply().catch(() => {});
+        
+        // Log only
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
-            const logEmbed = new EmbedBuilder()
-                .setTitle('📝 /product Command Used')
-                .setDescription(`**User:** ${interaction.user.tag}\n**Product:** ${productName}\n**Stock:** ${instockRaw}\n**Price:** ${price}`)
-                .setColor(0xffaa00)
-                .setTimestamp();
-            await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+            logChannel.send({ content: `📝 /product by ${interaction.user.tag}: ${productName} - ${price}` }).catch(() => {});
         }
     }
     
     // ============================================
-    // /CLEAR SLASH COMMAND
+    // /CLEAR COMMAND
     // ============================================
     if (interaction.commandName === 'clear') {
         if (!interaction.member.roles.cache.has(CONFIG.CLEAR_ROLE_ID)) {
-            return interaction.reply({ 
-                content: '❌ You do not have permission to use `/clear`.', 
-                ephemeral: true 
-            });
+            await interaction.reply({ content: '❌ No permission.', ephemeral: true });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
+            return;
         }
         
         const amount = interaction.options.getInteger('amount');
-        
         if (amount < 1 || amount > 100) {
-            return interaction.reply({ 
-                content: '❌ Please provide a number between 1 and 100.', 
-                ephemeral: true 
-            });
+            await interaction.reply({ content: '❌ Number between 1-100.', ephemeral: true });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
+            return;
         }
         
-        // Defer reply to avoid timeout
         await interaction.deferReply({ ephemeral: true });
         
         try {
-            // Fetch messages
             const messages = await interaction.channel.messages.fetch({ limit: amount });
-            
             if (messages.size === 0) {
-                return interaction.editReply({ content: '❌ No messages to clear.' });
+                await interaction.editReply({ content: '❌ No messages to clear.' });
+                setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+                return;
             }
             
-            // Delete messages
             await interaction.channel.bulkDelete(messages, true);
+            await interaction.editReply({ content: `✅ Cleared ${messages.size} messages.` });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
             
-            await interaction.editReply({ 
-                content: `✅ Successfully cleared ${messages.size} message(s).`,
-                ephemeral: true
-            });
-            
-            // Log to log channel
             const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
             if (logChannel) {
-                const logEmbed = new EmbedBuilder()
-                    .setTitle('📝 /clear Command Used')
-                    .setDescription(`**User:** ${interaction.user.tag}\n**Channel:** ${interaction.channel.name}\n**Amount:** ${amount} messages cleared`)
-                    .setColor(0xffaa00)
-                    .setTimestamp();
-                await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+                logChannel.send({ content: `📝 /clear by ${interaction.user.tag} in ${interaction.channel.name}: ${messages.size} messages` }).catch(() => {});
             }
         } catch (error) {
-            console.error('Clear error:', error);
-            await interaction.editReply({ 
-                content: '❌ Failed to clear messages. Messages may be older than 14 days.', 
-                ephemeral: true 
-            });
+            await interaction.editReply({ content: '❌ Failed. Messages may be older than 14 days.' });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
         }
     }
 });
@@ -603,14 +565,12 @@ client.on('interactionCreate', async (interaction) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
-    // BUY NOW button - creates ticket DIRECTLY
     if (interaction.customId.startsWith('buy_now_')) {
-        // Get product info
         const productData = client.productData?.get(interaction.customId);
         const productName = productData?.name || 'Unknown Product';
         const productPrice = productData?.price || 'Unknown Price';
         
-        // Check if user already has open ticket
+        // Check for existing ticket
         let existingTicket = null;
         for (const [channelId, data] of tickets.entries()) {
             if (data.userId === interaction.user.id) {
@@ -620,37 +580,35 @@ client.on('interactionCreate', async (interaction) => {
         }
         
         if (existingTicket) {
-            return interaction.reply({ 
-                content: `❌ You already have an open ticket: ${existingTicket.toString()}! Please close that one first.`, 
-                ephemeral: true 
-            });
+            await interaction.reply({ content: `❌ You already have an open ticket: ${existingTicket.toString()}`, ephemeral: true });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+            return;
         }
         
-        await interaction.reply({ content: `🛒 Creating your purchase ticket for **${productName}**...`, ephemeral: true });
+        await interaction.reply({ content: `🛒 Creating ticket for ${productName}...`, ephemeral: true });
         
-        // Create ticket directly
         const channel = await createDirectTicket(interaction.user, interaction, productName, productPrice);
         
-        await interaction.editReply({ content: `✅ Purchase ticket created: ${channel.toString()}! A support member will assist you shortly.`, ephemeral: true });
+        await interaction.editReply({ content: `✅ Ticket created: ${channel.toString()}` });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
         
-        // Clean up stored product data
         if (client.productData) client.productData.delete(interaction.customId);
     }
     
-    // MORE INFO button
     if (interaction.customId === 'more_info') {
         const embed = new EmbedBuilder()
             .setTitle('❓ Product Information')
-            .setDescription(`For more information about this product, please click the **Buy Now** button to create a ticket and our team will assist you.`)
+            .setDescription(`Click the **Buy Now** button to create a ticket and our team will assist you.`)
             .setColor(0x0099ff)
             .setTimestamp();
         
         await interaction.reply({ embeds: [embed], ephemeral: true });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 10000);
     }
 });
 
 // ============================================
-// WELCOME DM FOR NEW MEMBERS
+// WELCOME DM
 // ============================================
 client.on('guildMemberAdd', async (member) => {
     await updateMemberCount(member.guild);
@@ -662,38 +620,37 @@ client.on('guildMemberAdd', async (member) => {
         if (unverifiedRole) await member.roles.add(unverifiedRole);
         
         const welcomeEmbed = new EmbedBuilder()
-            .setTitle('🎉 Welcome to the Server!')
+            .setTitle('🎉 Welcome!')
             .setDescription(`Hello ${member.user.username}! Welcome to our community.\n\nPlease verify yourself in <#${CONFIG.VERIFICATION_CHANNEL_ID}> to access all channels.`)
             .setColor(0x00ff00)
             .addFields(
                 { name: '📌 Need Help?', value: 'Use the **Ticket System** to create a support ticket.', inline: true },
                 { name: '✅ Verify', value: 'Go to the verification channel and click the button!', inline: true },
-                { name: '⏱️ Time Limit', value: 'You have 24 hours to verify before being kicked.', inline: true }
+                { name: '⏱️ Time Limit', value: 'You have 24 hours to verify.', inline: true }
             )
             .setThumbnail(member.guild.iconURL())
-            .setFooter({ text: 'Please verify to access the server', iconURL: client.user.displayAvatarURL() })
             .setTimestamp();
         
         await member.send({ embeds: [welcomeEmbed] });
         joinedMembers.add(member.id);
-        console.log(`📨 Sent welcome DM to ${member.user.tag}`);
+        console.log(`📨 Welcome DM to ${member.user.tag}`);
         
         setTimeout(async () => {
             const freshMember = await member.guild.members.fetch(member.id).catch(() => null);
             if (freshMember && !freshMember.roles.cache.has(CONFIG.VERIFIED_ROLE_ID)) {
                 await freshMember.kick('Did not verify within 24 hours').catch(() => {});
-                console.log(`⏰ Kicked ${member.user.tag} for not verifying within 24 hours`);
+                console.log(`⏰ Kicked ${member.user.tag}`);
                 await updateMemberCount(member.guild);
             }
         }, 24 * 60 * 60 * 1000);
         
     } catch (error) {
-        console.log(`Couldn't send welcome DM to ${member.user.tag}: ${error.message}`);
+        console.log(`Couldn't DM ${member.user.tag}: ${error.message}`);
     }
 });
 
 // ============================================
-// UPDATE MEMBER COUNT WHEN SOMEONE LEAVES
+// LEAVE UPDATE
 // ============================================
 client.on('guildMemberRemove', async (member) => {
     await updateMemberCount(member.guild);
@@ -708,40 +665,28 @@ client.on('interactionCreate', async (interaction) => {
     const verifiedRole = interaction.guild.roles.cache.get(CONFIG.VERIFIED_ROLE_ID);
     const unverifiedRole = interaction.guild.roles.cache.get(CONFIG.UNVERIFIED_ROLE_ID);
     
-    if (!verifiedRole) return interaction.reply({ content: '❌ Verification role not configured!', ephemeral: true });
-    if (interaction.member.roles.cache.has(verifiedRole.id)) return interaction.reply({ content: '✅ You are already verified!', ephemeral: true });
+    if (!verifiedRole) return interaction.reply({ content: '❌ Role not configured!', ephemeral: true });
+    if (interaction.member.roles.cache.has(verifiedRole.id)) return interaction.reply({ content: '✅ Already verified!', ephemeral: true });
     
     await interaction.member.roles.add(verifiedRole);
     if (unverifiedRole) await interaction.member.roles.remove(unverifiedRole);
     
     const verifyEmbed = new EmbedBuilder()
-        .setTitle('✅ Verification Successful!')
-        .setDescription(`Welcome ${interaction.user.toString()}! You have been verified and now have access to all channels.`)
+        .setTitle('✅ Verified!')
+        .setDescription(`Welcome ${interaction.user.toString()}! You now have access to all channels.`)
         .setColor(0x00ff00)
         .setTimestamp();
     
     await interaction.reply({ embeds: [verifyEmbed], ephemeral: true });
     
-    const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
-    if (logChannel) {
-        const logEmbed = new EmbedBuilder()
-            .setTitle('✅ User Verified')
-            .setDescription(`**User:** ${interaction.user.tag}\n**Time:** <t:${Math.floor(Date.now() / 1000)}:F>`)
-            .setColor(0x00ff00)
-            .setTimestamp();
-        await logChannel.send({ embeds: [logEmbed] });
-    }
-    
     console.log(`✅ Verified ${interaction.user.tag}`);
 });
 
 // ============================================
-// TICKET BUTTON HANDLERS (Claim, Close, Transcript)
+// TICKET BUTTON HANDLERS
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
-    
-    // Skip product buttons
     if (interaction.customId.startsWith('buy_now_') || interaction.customId === 'more_info') return;
     if (interaction.customId === 'create_ticket_menu') return;
     if (interaction.customId === 'general_ticket' || interaction.customId === 'purchase_ticket' || interaction.customId === 'buysupport_ticket') return;
@@ -751,10 +696,10 @@ client.on('interactionCreate', async (interaction) => {
     
     if (interaction.customId === 'claim_ticket') {
         if (!interaction.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID)) {
-            return interaction.reply({ content: '❌ You do not have permission to claim tickets!', ephemeral: true });
+            return interaction.reply({ content: '❌ No permission!', ephemeral: true });
         }
         if (ticketData.claimedBy) {
-            return interaction.reply({ content: '❌ This ticket has already been claimed!', ephemeral: true });
+            return interaction.reply({ content: '❌ Already claimed!', ephemeral: true });
         }
         
         ticketData.claimedBy = interaction.user.id;
@@ -762,45 +707,23 @@ client.on('interactionCreate', async (interaction) => {
         
         const embed = new EmbedBuilder()
             .setTitle('🎯 Ticket Claimed')
-            .setDescription(`${interaction.user.toString()} has claimed this ticket and will assist you.`)
+            .setDescription(`${interaction.user.toString()} has claimed this ticket.`)
             .setColor(0xffaa00)
-            .addFields(
-                { name: 'Claimed by', value: interaction.user.tag, inline: true },
-                { name: 'Ticket Type', value: ticketData.ticketType, inline: true }
-            )
             .setTimestamp();
         
         await interaction.reply({ embeds: [embed] });
         
         const user = await interaction.guild.members.fetch(ticketData.userId).catch(() => null);
         if (user) {
-            const claimEmbed = new EmbedBuilder()
-                .setTitle('✅ Your Ticket Has Been Claimed')
-                .setDescription(`Your **${ticketData.ticketType}** ticket in ${interaction.guild.name} has been claimed by **${interaction.user.tag}**!`)
-                .setColor(0x00ff00)
-                .addFields(
-                    { name: 'Support Staff', value: interaction.user.tag, inline: true },
-                    { name: 'Ticket Channel', value: `<#${interaction.channel.id}>`, inline: true }
-                )
-                .setTimestamp();
-            
-            await user.send({ embeds: [claimEmbed] }).catch(() => console.log('Could not DM user'));
+            user.send({ content: `✅ Your ticket has been claimed by ${interaction.user.tag}!` }).catch(() => {});
         }
     }
     
     if (interaction.customId === 'close_ticket') {
         const hasPerm = interaction.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID) || ticketData.userId === interaction.user.id;
-        if (!hasPerm) {
-            return interaction.reply({ content: '❌ You do not have permission to close this ticket!', ephemeral: true });
-        }
+        if (!hasPerm) return interaction.reply({ content: '❌ No permission!', ephemeral: true });
         
-        const closeEmbed = new EmbedBuilder()
-            .setTitle('🔒 Closing Ticket')
-            .setDescription(`This ticket will be deleted in **5 seconds**. A transcript will be saved.`)
-            .setColor(0xff0000)
-            .setTimestamp();
-        
-        await interaction.reply({ embeds: [closeEmbed] });
+        await interaction.reply({ content: '🔒 Closing in 5 seconds...' });
         
         setTimeout(async () => {
             await sendTranscript(interaction.channel, interaction);
@@ -811,18 +734,16 @@ client.on('interactionCreate', async (interaction) => {
     
     if (interaction.customId === 'transcript') {
         const hasPerm = interaction.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID) || ticketData.userId === interaction.user.id;
-        if (!hasPerm) {
-            return interaction.reply({ content: '❌ You do not have permission to get transcript!', ephemeral: true });
-        }
+        if (!hasPerm) return interaction.reply({ content: '❌ No permission!', ephemeral: true });
         
         await interaction.reply({ content: '📄 Generating transcript...', ephemeral: true });
         await sendTranscript(interaction.channel, interaction);
-        await interaction.editReply({ content: '✅ Transcript has been sent to the transcript channel!', ephemeral: true });
+        await interaction.editReply({ content: '✅ Transcript sent!' });
     }
 });
 
 // ============================================
-// REGULAR TICKET CREATION BUTTONS (from support channel)
+// TICKET CREATION BUTTONS
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
@@ -830,14 +751,13 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'create_ticket_menu') {
         const embed = new EmbedBuilder()
             .setTitle('🎫 Create a Support Ticket')
-            .setDescription('Please select the category that best fits your needs:')
+            .setDescription('Select the category:')
             .setColor(0x00ff00)
             .addFields(
-                { name: '📋 General Question', value: 'General inquiries, questions, or feedback', inline: false },
-                { name: '💰 Purchase', value: 'Payment issues, transaction problems, or billing', inline: false },
-                { name: '🛡️ Buy Support', value: 'Premium support for paid services', inline: false }
+                { name: '📋 General Question', value: 'General inquiries', inline: false },
+                { name: '💰 Purchase', value: 'Payment issues', inline: false },
+                { name: '🛡️ Buy Support', value: 'Premium support', inline: false }
             )
-            .setFooter({ text: 'Choose carefully - this cannot be changed' })
             .setTimestamp();
         
         const row = new ActionRowBuilder()
@@ -861,17 +781,14 @@ client.on('interactionCreate', async (interaction) => {
             if (data.userId === interaction.user.id) {
                 const existing = interaction.guild.channels.cache.get(channelId);
                 if (existing) {
-                    return interaction.reply({ 
-                        content: `❌ You already have an open ticket: ${existing.toString()}! Please close that one first.`, 
-                        ephemeral: true 
-                    });
+                    return interaction.reply({ content: `❌ You already have a ticket: ${existing.toString()}`, ephemeral: true });
                 }
             }
         }
         
-        await interaction.reply({ content: `🎫 Creating your ${ticketType} ticket...`, ephemeral: true });
+        await interaction.reply({ content: `🎫 Creating ${ticketType} ticket...`, ephemeral: true });
         const channel = await createTicketChannel(interaction.user, interaction, categoryId, ticketType);
-        await interaction.editReply({ content: `✅ ${ticketType} ticket created: ${channel.toString()}`, ephemeral: true });
+        await interaction.editReply({ content: `✅ Ticket created: ${channel.toString()}` });
     }
 });
 
