@@ -46,24 +46,21 @@ const joinedMembers = new Set();
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ============================================
-// UPDATE MEMBER COUNT IN STATUS - FIXED
+// UPDATE MEMBER COUNT IN STATUS - "Members" met hoofdletter M
 // ============================================
 async function updateMemberCount(guild) {
     try {
-        // Force fetch all members to ensure cache is fresh
         await guild.members.fetch({ force: true });
         
-        // Count ONLY human members (exclude bots)
         const humanMembers = guild.members.cache.filter(member => !member.user.bot);
         const memberCount = humanMembers.size;
         
-        // Set status - use WATCHING type
         client.user.setPresence({
-            activities: [{ name: `${memberCount} members`, type: 3 }], // Type 3 = WATCHING
+            activities: [{ name: `${memberCount} Members`, type: 3 }], // "Members" met hoofdletter M
             status: 'online'
         });
         
-        console.log(`✅ Status updated: Watching ${memberCount} human members (Total members: ${guild.members.cache.size}, Bots: ${guild.members.cache.filter(m => m.user.bot).size})`);
+        console.log(`✅ Status updated: Watching ${memberCount} Members`);
         
         return memberCount;
     } catch (error) {
@@ -255,10 +252,8 @@ client.once('ready', async () => {
     
     const guild = client.guilds.cache.first();
     if (guild) {
-        // Initial member count update
         await updateMemberCount(guild);
         
-        // Update member count every 2 minutes (more frequent)
         setInterval(async () => {
             await updateMemberCount(guild);
         }, 120000);
@@ -267,7 +262,6 @@ client.once('ready', async () => {
         await registerCommands(guild);
     }
     
-    // Keep-alive ping for Render (every 5 minutes)
     setInterval(() => {
         console.log('🔄 Keep-alive ping');
     }, 300000);
@@ -312,7 +306,7 @@ client.once('ready', async () => {
 });
 
 // ============================================
-// /SEND SLASH COMMAND
+// /SEND SLASH COMMAND - GEEN LOG MESSAGE
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
@@ -338,7 +332,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.channel.send(messageContent);
         await interaction.editReply({ content: '✅ Message sent successfully!', ephemeral: true });
         
-        console.log(`✅ Sent /send in #${interaction.channel.name} by ${interaction.user.tag}: ${messageContent.substring(0, 50)}`);
+        // NO LOG MESSAGE HERE - verwijderd
         
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
@@ -356,7 +350,6 @@ client.on('interactionCreate', async (interaction) => {
 // WELCOME DM FOR NEW MEMBERS
 // ============================================
 client.on('guildMemberAdd', async (member) => {
-    // Update member count immediately
     await updateMemberCount(member.guild);
     
     if (joinedMembers.has(member.id)) return;
@@ -382,7 +375,6 @@ client.on('guildMemberAdd', async (member) => {
         joinedMembers.add(member.id);
         console.log(`📨 Sent welcome DM to ${member.user.tag}`);
         
-        // Auto-kick after 24 hours
         setTimeout(async () => {
             const freshMember = await member.guild.members.fetch(member.id).catch(() => null);
             if (freshMember && !freshMember.roles.cache.has(CONFIG.VERIFIED_ROLE_ID)) {
