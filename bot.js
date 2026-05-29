@@ -12,6 +12,7 @@ const CONFIG = {
     SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509664538281381908',
     SEND_ROLE_ID: process.env.SEND_ROLE_ID,
     PRODUCT_ROLE_ID: process.env.PRODUCT_ROLE_ID,
+    CLEAR_ROLE_ID: process.env.CLEAR_ROLE_ID,  // NEW: Role for /clear command
     TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
     
@@ -124,11 +125,23 @@ async function registerCommands(guild) {
                     required: false
                 }
             ]
+        },
+        {
+            name: 'clear',
+            description: 'Clear messages from the channel',
+            options: [
+                {
+                    name: 'amount',
+                    description: 'Number of messages to clear (1-100)',
+                    type: 4,
+                    required: true
+                }
+            ]
         }
     ];
     
     await guild.commands.set(commands);
-    console.log('✅ Slash commands /send and /product registered!');
+    console.log('✅ Slash commands /send, /product, and /clear registered!');
 }
 
 // ============================================
@@ -138,7 +151,7 @@ async function deleteAllSlashCommands(guild) {
     try {
         const commands = await guild.commands.fetch();
         for (const command of commands.values()) {
-            if (command.name !== 'send' && command.name !== 'product') {
+            if (command.name !== 'send' && command.name !== 'product' && command.name !== 'clear') {
                 await guild.commands.delete(command.id);
                 console.log(`🗑️ Deleted slash command: /${command.name}`);
             }
@@ -150,7 +163,7 @@ async function deleteAllSlashCommands(guild) {
 }
 
 // ============================================
-// CREATE TICKET CHANNEL DIRECTLY (NO POPUP)
+// CREATE TICKET CHANNEL DIRECTLY
 // ============================================
 async function createDirectTicket(user, interaction, productName, productPrice) {
     const guild = interaction.guild;
@@ -400,6 +413,7 @@ client.once('ready', async () => {
     console.log('✅ Bot is fully ready!');
     console.log('📌 Use /send <message> - Send a message as the bot');
     console.log('📌 Use /product <name> <instock> <price> - Create a product embed');
+    console.log('📌 Use /clear <amount> - Clear messages (requires CLEAR_ROLE_ID)');
 });
 
 // ============================================
@@ -434,7 +448,7 @@ client.on('interactionCreate', async (interaction) => {
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
                 .setTitle('📝 /send Command Used')
-                .setDescription(`**User:** ${interaction.user.tag} (${interaction.user.id})\n**Channel:** ${interaction.channel.name}\n**Message:** ${messageContent.substring(0, 500)}`)
+                .setDescription(`**User:** ${interaction.user.tag}\n**Channel:** ${interaction.channel.name}\n**Message:** ${messageContent.substring(0, 500)}`)
                 .setColor(0xffaa00)
                 .setTimestamp();
             await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
@@ -468,7 +482,7 @@ client.on('interactionCreate', async (interaction) => {
         const stockStatus = inStock ? '✅ **IN STOCK**' : '❌ **OUT OF STOCK**';
         const stockColor = inStock ? 0x00ff00 : 0xff0000;
         
-        // Create clean product embed
+        // Create clean product embed (NO author, NO footer with user name)
         const productEmbed = new EmbedBuilder()
             .setTitle(`${productName}`)
             .setDescription(description)
@@ -488,11 +502,14 @@ client.on('interactionCreate', async (interaction) => {
         
         productEmbed.setThumbnail('https://cdn-icons-png.flaticon.com/512/2331/2331970.png');
         
-        // Add action buttons - Buy Now creates ticket directly
+        // Generate unique button ID
+        const buttonId = `buy_now_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        
+        // Add action buttons
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`buy_now_${Date.now()}`)
+                    .setCustomId(buttonId)
                     .setLabel('Buy Now')
                     .setStyle(ButtonStyle.Success)
                     .setEmoji('🛒'),
@@ -503,13 +520,9 @@ client.on('interactionCreate', async (interaction) => {
                     .setEmoji('❓')
             );
         
-        // Store product info for the button
-        const customId = `buy_now_${Date.now()}`;
-        row.components[0].setCustomId(customId);
-        
         // Store product data temporarily
         if (!client.productData) client.productData = new Map();
-        client.productData.set(customId, { name: productName, price: price });
+        client.productData.set(buttonId, { name: productName, price: price });
         
         await interaction.reply({ embeds: [productEmbed], components: [row] });
         
@@ -524,6 +537,64 @@ client.on('interactionCreate', async (interaction) => {
             await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
         }
     }
+    
+    // ============================================
+    // /CLEAR SLASH COMMAND
+    // ============================================
+    if (interaction.commandName === 'clear') {
+        if (!interaction.member.roles.cache.has(CONFIG.CLEAR_ROLE_ID)) {
+            return interaction.reply({ 
+                content: '❌ You do not have permission to use `/clear`.', 
+                ephemeral: true 
+            });
+        }
+        
+        const amount = interaction.options.getInteger('amount');
+        
+        if (amount < 1 || amount > 100) {
+            return interaction.reply({ 
+                content: '❌ Please provide a number between 1 and 100.', 
+                ephemeral: true 
+            });
+        }
+        
+        // Defer reply to avoid timeout
+        await interaction.deferReply({ ephemeral: true });
+        
+        try {
+            // Fetch messages
+            const messages = await interaction.channel.messages.fetch({ limit: amount });
+            
+            if (messages.size === 0) {
+                return interaction.editReply({ content: '❌ No messages to clear.' });
+            }
+            
+            // Delete messages
+            await interaction.channel.bulkDelete(messages, true);
+            
+            await interaction.editReply({ 
+                content: `✅ Successfully cleared ${messages.size} message(s).`,
+                ephemeral: true
+            });
+            
+            // Log to log channel
+            const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+            if (logChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setTitle('📝 /clear Command Used')
+                    .setDescription(`**User:** ${interaction.user.tag}\n**Channel:** ${interaction.channel.name}\n**Amount:** ${amount} messages cleared`)
+                    .setColor(0xffaa00)
+                    .setTimestamp();
+                await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+            }
+        } catch (error) {
+            console.error('Clear error:', error);
+            await interaction.editReply({ 
+                content: '❌ Failed to clear messages. Messages may be older than 14 days.', 
+                ephemeral: true 
+            });
+        }
+    }
 });
 
 // ============================================
@@ -532,7 +603,7 @@ client.on('interactionCreate', async (interaction) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
-    // BUY NOW button - creates ticket DIRECTLY (no popup)
+    // BUY NOW button - creates ticket DIRECTLY
     if (interaction.customId.startsWith('buy_now_')) {
         // Get product info
         const productData = client.productData?.get(interaction.customId);
@@ -655,7 +726,7 @@ client.on('interactionCreate', async (interaction) => {
     if (logChannel) {
         const logEmbed = new EmbedBuilder()
             .setTitle('✅ User Verified')
-            .setDescription(`**User:** ${interaction.user.tag} (${interaction.user.id})\n**Time:** <t:${Math.floor(Date.now() / 1000)}:F>`)
+            .setDescription(`**User:** ${interaction.user.tag}\n**Time:** <t:${Math.floor(Date.now() / 1000)}:F>`)
             .setColor(0x00ff00)
             .setTimestamp();
         await logChannel.send({ embeds: [logEmbed] });
