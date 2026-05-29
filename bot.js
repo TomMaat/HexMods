@@ -45,6 +45,21 @@ const joinedMembers = new Set();
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ============================================
+// UPDATE MEMBER COUNT IN STATUS
+// ============================================
+async function updateMemberCount(guild) {
+    try {
+        await guild.members.fetch();
+        const memberCount = guild.members.cache.filter(member => !member.user.bot).size;
+        client.user.setActivity(`${memberCount} Members`, { type: 'WATCHING' });
+        console.log(`✅ Status updated: Watching ${memberCount} Members`);
+        return memberCount;
+    } catch (error) {
+        console.log(`❌ Could not update member count: ${error.message}`);
+    }
+}
+
+// ============================================
 // DELETE ALL SLASH COMMANDS
 // ============================================
 async function deleteAllSlashCommands(guild) {
@@ -200,13 +215,23 @@ async function sendVerificationMessage(guild) {
 // ============================================
 client.once('ready', async () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
-    client.user.setActivity('Ready for /send', { type: 'LISTENING' });
-    
-    setInterval(() => {
-        client.user.setActivity('Ready for /send', { type: 'LISTENING' });
-    }, 300000);
     
     const guild = client.guilds.cache.first();
+    if (guild) {
+        // Update member count on startup
+        await updateMemberCount(guild);
+        
+        // Update member count every 5 minutes
+        setInterval(async () => {
+            await updateMemberCount(guild);
+        }, 300000);
+    }
+    
+    // Keep-alive ping for Render
+    setInterval(() => {
+        console.log('🔄 Keep-alive ping');
+    }, 300000);
+    
     if (!guild) return;
     
     await deleteAllSlashCommands(guild);
@@ -249,9 +274,12 @@ client.once('ready', async () => {
 });
 
 // ============================================
-// WELCOME DM FOR NEW MEMBERS
+// WELCOME DM FOR NEW MEMBERS + UPDATE COUNT
 // ============================================
 client.on('guildMemberAdd', async (member) => {
+    // Update member count in status
+    await updateMemberCount(member.guild);
+    
     if (joinedMembers.has(member.id)) return;
     
     try {
@@ -281,12 +309,21 @@ client.on('guildMemberAdd', async (member) => {
             if (freshMember && !freshMember.roles.cache.has(CONFIG.VERIFIED_ROLE_ID)) {
                 await freshMember.kick('Did not verify within 10 minutes').catch(() => {});
                 console.log(`⏰ Kicked ${member.user.tag} for not verifying`);
+                // Update count after kick
+                await updateMemberCount(member.guild);
             }
         }, 10 * 60 * 1000);
         
     } catch (error) {
         console.log(`Couldn't send welcome DM to ${member.user.tag}: ${error.message}`);
     }
+});
+
+// ============================================
+// UPDATE MEMBER COUNT WHEN SOMEONE LEAVES
+// ============================================
+client.on('guildMemberRemove', async (member) => {
+    await updateMemberCount(member.guild);
 });
 
 // ============================================
@@ -345,7 +382,7 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
-        const msgContent = message.content.slice(6); // '/send ' is 6 characters
+        const msgContent = message.content.slice(6);
         if (!msgContent || msgContent.trim() === '') {
             const errorMsg = await message.reply({ 
                 content: '❌ Usage: `/send your message here`', 
@@ -358,19 +395,13 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
-        // Show typing indicator
         await message.channel.sendTyping();
         await delay(500);
-        
-        // Delete the original command message
         await message.delete().catch(() => {});
-        
-        // Send as plain text (looks like bot typed it)
         await message.channel.send(msgContent);
         
         console.log(`✅ Sent /send in #${message.channel.name} by ${message.author.tag}: ${msgContent.substring(0, 50)}`);
         
-        // Log to log channel
         const logChannel = message.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
@@ -421,7 +452,6 @@ client.on('interactionCreate', async (interaction) => {
     else if (interaction.customId === 'buysupport_ticket') { categoryId = CONFIG.BUY_SUPPORT_CATEGORY_ID; ticketType = 'Buy Support'; }
     
     if (categoryId && ticketType) {
-        // Check for existing ticket
         for (const [channelId, data] of tickets.entries()) {
             if (data.userId === interaction.user.id) {
                 const existing = interaction.guild.channels.cache.get(channelId);
@@ -439,7 +469,6 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.editReply({ content: `✅ ${ticketType} ticket created: ${channel.toString()}`, ephemeral: true });
     }
     
-    // Ticket management (claim, close, transcript)
     const ticketData = tickets.get(interaction.channelId);
     if (!ticketData) return;
     
