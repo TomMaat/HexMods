@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 const express = require('express');
 
 // ============================================
-// CONFIG - ALLEEN ENVIRONMENT VARIABLES
+// CONFIG - ENVIRONMENT VARIABLES
 // ============================================
 const CONFIG = {
     GENERAL_CATEGORY_ID: process.env.GENERAL_CATEGORY_ID,
@@ -19,7 +19,7 @@ const CONFIG = {
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
     
     TICKET_CREATION_CHANNEL_ID: process.env.TICKET_CREATION_CHANNEL_ID,
-    ROLE_CLAIM_CHANNEL_ID: process.env.ROLE_CLAIM_CHANNEL_ID,  // NEW: Channel for role claim embed
+    ROLE_CLAIM_CHANNEL_ID: process.env.ROLE_CLAIM_CHANNEL_ID,
     
     VERIFIED_ROLE_ID: process.env.VERIFIED_ROLE_ID,
     UNVERIFIED_ROLE_ID: process.env.UNVERIFIED_ROLE_ID,
@@ -30,6 +30,7 @@ const CONFIG = {
     TRIGGER_SHOP_ROLE_ID: process.env.TRIGGER_SHOP_ROLE_ID,
     SCRIPTS_ROLE_ID: process.env.SCRIPTS_ROLE_ID,
     CHEATS_SOFTWARE_ROLE_ID: process.env.CHEATS_SOFTWARE_ROLE_ID,
+    IRL_TRADING_ROLE_ID: process.env.IRL_TRADING_ROLE_ID,
     
     TOKEN: process.env.TOKEN
 };
@@ -61,7 +62,6 @@ const joinedMembers = new Set();
 async function updateMemberCount(guild) {
     try {
         await guild.members.fetch({ force: true });
-        
         const humanMembers = guild.members.cache.filter(member => !member.user.bot);
         const memberCount = humanMembers.size;
         
@@ -71,7 +71,6 @@ async function updateMemberCount(guild) {
         });
         
         console.log(`✅ Status updated: Watching ${memberCount} Members`);
-        
         return memberCount;
     } catch (error) {
         console.log(`❌ Could not update member count: ${error.message}`);
@@ -86,96 +85,31 @@ async function registerCommands(guild) {
         {
             name: 'send',
             description: 'Send a message as the bot',
-            options: [
-                {
-                    name: 'message',
-                    description: 'The message to send',
-                    type: 3,
-                    required: true
-                }
-            ]
+            options: [{ name: 'message', description: 'The message to send', type: 3, required: true }]
         },
         {
             name: 'product',
             description: 'Create a product embed',
             options: [
-                {
-                    name: 'name',
-                    description: 'The product name',
-                    type: 3,
-                    required: true
-                },
-                {
-                    name: 'instock',
-                    description: 'Is the product in stock? (yes/no)',
-                    type: 3,
-                    required: true,
-                    choices: [
-                        { name: 'Yes ✅', value: 'yes' },
-                        { name: 'No ❌', value: 'no' }
-                    ]
-                },
-                {
-                    name: 'price',
-                    description: 'The product price',
-                    type: 3,
-                    required: true
-                },
-                {
-                    name: 'description',
-                    description: 'Product description',
-                    type: 3,
-                    required: false
-                },
-                {
-                    name: 'image',
-                    description: 'Image URL for the product',
-                    type: 3,
-                    required: false
-                }
+                { name: 'name', description: 'The product name', type: 3, required: true },
+                { name: 'instock', description: 'Is the product in stock?', type: 3, required: true, choices: [{ name: 'Yes ✅', value: 'yes' }, { name: 'No ❌', value: 'no' }] },
+                { name: 'price', description: 'The product price', type: 3, required: true },
+                { name: 'description', description: 'Product description', type: 3, required: false },
+                { name: 'image', description: 'Image URL for the product', type: 3, required: false }
             ]
         },
         {
             name: 'clear',
             description: 'Clear messages from the channel',
-            options: [
-                {
-                    name: 'amount',
-                    description: 'Number of messages to clear (1-100)',
-                    type: 4,
-                    required: true
-                }
-            ]
+            options: [{ name: 'amount', description: 'Number of messages to clear (1-100)', type: 4, required: true }]
         },
         {
             name: 'review',
             description: 'Leave a review for a product',
             options: [
-                {
-                    name: 'stars',
-                    description: 'Number of stars (1-5)',
-                    type: 4,
-                    required: true,
-                    choices: [
-                        { name: '⭐ 1 star', value: 1 },
-                        { name: '⭐⭐ 2 stars', value: 2 },
-                        { name: '⭐⭐⭐ 3 stars', value: 3 },
-                        { name: '⭐⭐⭐⭐ 4 stars', value: 4 },
-                        { name: '⭐⭐⭐⭐⭐ 5 stars', value: 5 }
-                    ]
-                },
-                {
-                    name: 'product',
-                    description: 'What product did you buy?',
-                    type: 3,
-                    required: true
-                },
-                {
-                    name: 'review',
-                    description: 'Your review message',
-                    type: 3,
-                    required: true
-                }
+                { name: 'stars', description: 'Number of stars (1-5)', type: 4, required: true, choices: [{ name: '⭐ 1 star', value: 1 }, { name: '⭐⭐ 2 stars', value: 2 }, { name: '⭐⭐⭐ 3 stars', value: 3 }, { name: '⭐⭐⭐⭐ 4 stars', value: 4 }, { name: '⭐⭐⭐⭐⭐ 5 stars', value: 5 }] },
+                { name: 'product', description: 'What product did you buy?', type: 3, required: true },
+                { name: 'review', description: 'Your review message', type: 3, required: true }
             ]
         }
     ];
@@ -203,7 +137,7 @@ async function deleteAllSlashCommands(guild) {
 }
 
 // ============================================
-// ROLE CLAIM EMBED SETUP
+// BEAUTIFUL ROLE CLAIM EMBED
 // ============================================
 async function sendRoleClaimMessage(guild) {
     const roleClaimChannel = guild.channels.cache.get(CONFIG.ROLE_CLAIM_CHANNEL_ID);
@@ -212,65 +146,48 @@ async function sendRoleClaimMessage(guild) {
         return;
     }
     
-    // Clear previous messages
     const messages = await roleClaimChannel.messages.fetch();
     if (messages.size > 0) await roleClaimChannel.bulkDelete(messages).catch(() => {});
     
+    // Beautiful gradient embed
     const embed = new EmbedBuilder()
-        .setTitle('🎭 **Claim Your Roles**')
-        .setDescription('Click the buttons below to claim roles and access specific content channels!\n\n*You can claim multiple roles.*')
+        .setTitle('🌟 **ACCESS YOUR ROLES** 🌟')
+        .setDescription('> *Click the buttons below to customize your experience*\n> *You can claim multiple roles at once!*\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
         .setColor(0x5865F2)
-        .addFields(
-            { name: '━━━━━━━━━━━━━━━━━━━━━━', value: '⬇️ **Available Roles** ⬇️', inline: false },
-            { name: '🎭 **Spoof Accounts**', value: 'Access to spoof account discussions and resources', inline: true },
-            { name: '🛒 **Trigger Shop**', value: 'Access to trigger shop and related content', inline: true },
-            { name: '📜 **Scripts**', value: 'Access to script sharing and discussions', inline: true },
-            { name: '💻 **Cheats/Software**', value: 'Access to cheats and software channels', inline: true }
-        )
         .setThumbnail(guild.iconURL())
-        .setFooter({ text: 'Click any button to claim/unclaim a role', iconURL: client.user.displayAvatarURL() })
+        .setImage('https://i.imgur.com/8Y5Qm7M.png')
+        .addFields(
+            { name: '▬▬▬▬▬▬▬▬▬▬▬▬ **AVAILABLE ROLES** ▬▬▬▬▬▬▬▬▬▬▬▬', value: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', inline: false },
+            { name: '<:sparkles:> **Spoof Accounts**', value: '`Access to spoof account resources`', inline: true },
+            { name: '<:zap:> **Trigger Shop**', value: '`Access to trigger shop content`', inline: true },
+            { name: '<:code:> **Scripts**', value: '`Access to script sharing & discussions`', inline: true },
+            { name: '<:microchip:> **Cheats/Software**', value: '`Access to cheats & software channels`', inline: true },
+            { name: '<:handshake:> **IRL-Trading**', value: '`Access to real-life trading channels`', inline: true }
+        )
+        .setFooter({ text: '✦ Click any button to claim or unclaim a role ✦', iconURL: client.user.displayAvatarURL() })
         .setTimestamp();
     
-    const row = new ActionRowBuilder()
+    const row1 = new ActionRowBuilder()
         .addComponents(
-            new ButtonBuilder()
-                .setCustomId('claim_spoof')
-                .setLabel('Spoof Accounts')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji('🎭'),
-            new ButtonBuilder()
-                .setCustomId('claim_trigger')
-                .setLabel('Trigger Shop')
-                .setStyle(ButtonStyle.Success)
-                .setEmoji('🛒'),
-            new ButtonBuilder()
-                .setCustomId('claim_scripts')
-                .setLabel('Scripts')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji('📜'),
-            new ButtonBuilder()
-                .setCustomId('claim_cheats')
-                .setLabel('Cheats/Software')
-                .setStyle(ButtonStyle.Danger)
-                .setEmoji('💻')
+            new ButtonBuilder().setCustomId('claim_spoof').setLabel('Spoof Accounts').setStyle(ButtonStyle.Primary).setEmoji('🎭'),
+            new ButtonBuilder().setCustomId('claim_trigger').setLabel('Trigger Shop').setStyle(ButtonStyle.Success).setEmoji('🛒'),
+            new ButtonBuilder().setCustomId('claim_scripts').setLabel('Scripts').setStyle(ButtonStyle.Primary).setEmoji('📜')
         );
     
     const row2 = new ActionRowBuilder()
         .addComponents(
-            new ButtonBuilder()
-                .setCustomId('claim_all')
-                .setLabel('Claim All Roles')
-                .setStyle(ButtonStyle.Success)
-                .setEmoji('✅'),
-            new ButtonBuilder()
-                .setCustomId('unclaim_all')
-                .setLabel('Remove All Roles')
-                .setStyle(ButtonStyle.Danger)
-                .setEmoji('❌')
+            new ButtonBuilder().setCustomId('claim_cheats').setLabel('Cheats/Software').setStyle(ButtonStyle.Danger).setEmoji('💻'),
+            new ButtonBuilder().setCustomId('claim_irl').setLabel('IRL-Trading').setStyle(ButtonStyle.Secondary).setEmoji('🔄')
         );
     
-    await roleClaimChannel.send({ embeds: [embed], components: [row, row2] });
-    console.log('✅ Role claim message sent!');
+    const row3 = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder().setCustomId('claim_all').setLabel('Claim All Roles').setStyle(ButtonStyle.Success).setEmoji('✅'),
+            new ButtonBuilder().setCustomId('unclaim_all').setLabel('Remove All Roles').setStyle(ButtonStyle.Danger).setEmoji('❌')
+        );
+    
+    await roleClaimChannel.send({ embeds: [embed], components: [row1, row2, row3] });
+    console.log('✅ Beautiful role claim embed sent!');
 }
 
 // ============================================
@@ -300,12 +217,12 @@ async function createDirectTicket(user, interaction, productName, productPrice) 
     });
     
     const embed = new EmbedBuilder()
-        .setTitle(`🛒 Purchase Ticket`)
-        .setDescription(`Welcome ${user.toString()}! Your purchase ticket has been created.\n\n**Product:** ${productName}\n**Price:** ${productPrice}\n**Created:** <t:${Math.floor(Date.now() / 1000)}:F>\n\nA support member will assist you with your purchase shortly.`)
+        .setTitle(`🛒 **Purchase Ticket**`)
+        .setDescription(`Welcome ${user.toString()}! Your purchase ticket has been created.\n\n**Product:** ${productName}\n**Price:** ${productPrice}\n**Created:** <t:${Math.floor(Date.now() / 1000)}:F>\n\nA support member will assist you shortly.`)
         .setColor(0x00ff00)
         .setThumbnail(guild.iconURL())
         .addFields(
-            { name: '📌 Instructions', value: '• Click **Claim Ticket** to take ownership\n• Click **Close Ticket** to delete this ticket\n• Click **Get Transcript** to save the conversation', inline: false },
+            { name: '📌 **Instructions**', value: '• Click **Claim Ticket** to take ownership\n• Click **Close Ticket** to delete this ticket\n• Click **Get Transcript** to save the conversation', inline: false },
             { name: '👤 User', value: user.toString(), inline: true },
             { name: '🛒 Product', value: productName, inline: true },
             { name: '💰 Price', value: productPrice, inline: true }
@@ -320,12 +237,7 @@ async function createDirectTicket(user, interaction, productName, productPrice) 
             new ButtonBuilder().setCustomId('transcript').setLabel('Get Transcript').setStyle(ButtonStyle.Secondary).setEmoji('📄')
         );
     
-    await channel.send({
-        content: `${user.toString()} ${supportRole.toString()}`,
-        embeds: [embed],
-        components: [row]
-    });
-    
+    await channel.send({ content: `${user.toString()} ${supportRole.toString()}`, embeds: [embed], components: [row] });
     return channel;
 }
 
@@ -381,12 +293,7 @@ async function createTicketChannel(user, interaction, categoryId, ticketType) {
             new ButtonBuilder().setCustomId('transcript').setLabel('Get Transcript').setStyle(ButtonStyle.Secondary).setEmoji('📄')
         );
     
-    await channel.send({
-        content: `${user.toString()} ${supportRole.toString()}`,
-        embeds: [embed],
-        components: [row]
-    });
-    
+    await channel.send({ content: `${user.toString()} ${supportRole.toString()}`, embeds: [embed], components: [row] });
     return channel;
 }
 
@@ -396,8 +303,7 @@ async function sendTranscript(channel, interaction) {
     let transcript = `Ticket Transcript: ${channel.name}\n`;
     transcript += `Ticket Type: ${ticketData ? ticketData.ticketType : 'Unknown'}\n`;
     transcript += `Created: ${new Date(ticketData ? ticketData.createdAt : Date.now()).toLocaleString()}\n`;
-    transcript += `Closed: ${new Date().toLocaleString()}\n`;
-    transcript += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    transcript += `Closed: ${new Date().toLocaleString()}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
     messages.reverse().forEach(msg => {
         transcript += `[${msg.author.tag}] (${msg.createdAt.toLocaleString()}): ${msg.content || '(embed/attachment)'}\n`;
@@ -416,14 +322,7 @@ async function sendTranscript(channel, interaction) {
             )
             .setTimestamp();
         
-        await transcriptChannel.send({
-            content: `📄 **Transcript for ${channel.name}**`,
-            embeds: [embed],
-            files: [{
-                attachment: Buffer.from(transcript, 'utf-8'),
-                name: `${channel.name}-transcript.txt`
-            }]
-        });
+        await transcriptChannel.send({ content: `📄 **Transcript for ${channel.name}**`, embeds: [embed], files: [{ attachment: Buffer.from(transcript, 'utf-8'), name: `${channel.name}-transcript.txt` }] });
     }
 }
 
@@ -438,8 +337,8 @@ async function sendVerificationMessage(guild) {
     if (messages.size > 0) await verificationChannel.bulkDelete(messages).catch(() => {});
     
     const embed = new EmbedBuilder()
-        .setTitle('✅ Verification Required')
-        .setDescription('Welcome to the server! Please verify yourself to access the rest of the channels.')
+        .setTitle('✅ **Verification Required**')
+        .setDescription('Welcome to the server! Please verify yourself to access the rest of the channels.\n\n*Click the button below to get started.*')
         .setColor(0x00ff00)
         .addFields(
             { name: '📋 Why verify?', value: 'Verification helps us keep the server safe from bots and spam.', inline: false },
@@ -450,15 +349,7 @@ async function sendVerificationMessage(guild) {
         .setFooter({ text: 'Click the button below to verify', iconURL: client.user.displayAvatarURL() })
         .setTimestamp();
     
-    const row = new ActionRowBuilder()
-        .addComponents(
-            new ButtonBuilder()
-                .setCustomId('verify_button')
-                .setLabel('Verify Me')
-                .setStyle(ButtonStyle.Success)
-                .setEmoji('✅')
-        );
-    
+    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('verify_button').setLabel('Verify Me').setStyle(ButtonStyle.Success).setEmoji('✅'));
     await verificationChannel.send({ embeds: [embed], components: [row] });
     console.log('✅ Verification message sent!');
 }
@@ -472,23 +363,16 @@ client.once('ready', async () => {
     const guild = client.guilds.cache.first();
     if (guild) {
         await updateMemberCount(guild);
-        
-        setInterval(async () => {
-            await updateMemberCount(guild);
-        }, 120000);
-        
+        setInterval(async () => { await updateMemberCount(guild); }, 120000);
         await deleteAllSlashCommands(guild);
         await registerCommands(guild);
     }
     
-    setInterval(() => {
-        console.log('🔄 Keep-alive ping');
-    }, 300000);
-    
+    setInterval(() => { console.log('🔄 Keep-alive ping'); }, 300000);
     if (!guild) return;
     
     await sendVerificationMessage(guild);
-    await sendRoleClaimMessage(guild);  // NEW: Send role claim embed
+    await sendRoleClaimMessage(guild);
     
     const ticketChannel = client.channels.cache.get(CONFIG.TICKET_CREATION_CHANNEL_ID);
     if (ticketChannel) {
@@ -496,8 +380,8 @@ client.once('ready', async () => {
         if (messages.size > 0) await ticketChannel.bulkDelete(messages).catch(() => {});
         
         const embed = new EmbedBuilder()
-            .setTitle('🎫 Support Ticket System')
-            .setDescription('Welcome to our support system! Click the button below to get started and select the type of support you need.')
+            .setTitle('🎫 **Support Ticket System**')
+            .setDescription('Welcome to our support system! Click the button below to get started.')
             .setColor(0x00ff00)
             .addFields(
                 { name: '📋 How it works', value: '1. Click the button below\n2. Choose your ticket type\n3. A private channel will be created\n4. Support team will assist you', inline: false },
@@ -508,15 +392,7 @@ client.once('ready', async () => {
             .setFooter({ text: 'Support System • Click below to start', iconURL: client.user.displayAvatarURL() })
             .setTimestamp();
         
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('create_ticket_menu')
-                    .setLabel('Create Ticket')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('🎫')
-            );
-        
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('create_ticket_menu').setLabel('Create Ticket').setStyle(ButtonStyle.Success).setEmoji('🎫'));
         await ticketChannel.send({ embeds: [embed], components: [row] });
         console.log('✅ Ticket creation embed set up!');
     }
@@ -525,118 +401,7 @@ client.once('ready', async () => {
 });
 
 // ============================================
-// ROLE CLAIM BUTTON HANDLERS
-// ============================================
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isButton()) return;
-    
-    // Spoof Accounts role
-    if (interaction.customId === 'claim_spoof') {
-        const role = interaction.guild.roles.cache.get(CONFIG.SPOOF_ACCOUNTS_ROLE_ID);
-        if (!role) return interaction.reply({ content: '❌ Role not configured!', ephemeral: true });
-        
-        if (interaction.member.roles.cache.has(role.id)) {
-            await interaction.member.roles.remove(role);
-            await interaction.reply({ content: `✅ Removed role: **${role.name}**`, ephemeral: true });
-        } else {
-            await interaction.member.roles.add(role);
-            await interaction.reply({ content: `✅ Added role: **${role.name}**`, ephemeral: true });
-        }
-        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
-    }
-    
-    // Trigger Shop role
-    if (interaction.customId === 'claim_trigger') {
-        const role = interaction.guild.roles.cache.get(CONFIG.TRIGGER_SHOP_ROLE_ID);
-        if (!role) return interaction.reply({ content: '❌ Role not configured!', ephemeral: true });
-        
-        if (interaction.member.roles.cache.has(role.id)) {
-            await interaction.member.roles.remove(role);
-            await interaction.reply({ content: `✅ Removed role: **${role.name}**`, ephemeral: true });
-        } else {
-            await interaction.member.roles.add(role);
-            await interaction.reply({ content: `✅ Added role: **${role.name}**`, ephemeral: true });
-        }
-        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
-    }
-    
-    // Scripts role
-    if (interaction.customId === 'claim_scripts') {
-        const role = interaction.guild.roles.cache.get(CONFIG.SCRIPTS_ROLE_ID);
-        if (!role) return interaction.reply({ content: '❌ Role not configured!', ephemeral: true });
-        
-        if (interaction.member.roles.cache.has(role.id)) {
-            await interaction.member.roles.remove(role);
-            await interaction.reply({ content: `✅ Removed role: **${role.name}**`, ephemeral: true });
-        } else {
-            await interaction.member.roles.add(role);
-            await interaction.reply({ content: `✅ Added role: **${role.name}**`, ephemeral: true });
-        }
-        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
-    }
-    
-    // Cheats/Software role
-    if (interaction.customId === 'claim_cheats') {
-        const role = interaction.guild.roles.cache.get(CONFIG.CHEATS_SOFTWARE_ROLE_ID);
-        if (!role) return interaction.reply({ content: '❌ Role not configured!', ephemeral: true });
-        
-        if (interaction.member.roles.cache.has(role.id)) {
-            await interaction.member.roles.remove(role);
-            await interaction.reply({ content: `✅ Removed role: **${role.name}**`, ephemeral: true });
-        } else {
-            await interaction.member.roles.add(role);
-            await interaction.reply({ content: `✅ Added role: **${role.name}**`, ephemeral: true });
-        }
-        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
-    }
-    
-    // Claim All Roles
-    if (interaction.customId === 'claim_all') {
-        const roles = [
-            CONFIG.SPOOF_ACCOUNTS_ROLE_ID,
-            CONFIG.TRIGGER_SHOP_ROLE_ID,
-            CONFIG.SCRIPTS_ROLE_ID,
-            CONFIG.CHEATS_SOFTWARE_ROLE_ID
-        ];
-        
-        let added = 0;
-        for (const roleId of roles) {
-            const role = interaction.guild.roles.cache.get(roleId);
-            if (role && !interaction.member.roles.cache.has(role.id)) {
-                await interaction.member.roles.add(role);
-                added++;
-            }
-        }
-        
-        await interaction.reply({ content: `✅ Added ${added} new role(s) to you!`, ephemeral: true });
-        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
-    }
-    
-    // Unclaim All Roles
-    if (interaction.customId === 'unclaim_all') {
-        const roles = [
-            CONFIG.SPOOF_ACCOUNTS_ROLE_ID,
-            CONFIG.TRIGGER_SHOP_ROLE_ID,
-            CONFIG.SCRIPTS_ROLE_ID,
-            CONFIG.CHEATS_SOFTWARE_ROLE_ID
-        ];
-        
-        let removed = 0;
-        for (const roleId of roles) {
-            const role = interaction.guild.roles.cache.get(roleId);
-            if (role && interaction.member.roles.cache.has(role.id)) {
-                await interaction.member.roles.remove(role);
-                removed++;
-            }
-        }
-        
-        await interaction.reply({ content: `✅ Removed ${removed} role(s) from you!`, ephemeral: true });
-        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
-    }
-});
-
-// ============================================
-// /SEND COMMAND
+// SLASH COMMAND HANDLERS
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
@@ -647,34 +412,23 @@ client.on('interactionCreate', async (interaction) => {
             setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
             return;
         }
-        
         const messageContent = interaction.options.getString('message');
         if (!messageContent || messageContent.trim() === '') {
             await interaction.reply({ content: '❌ Provide a message.', ephemeral: true });
             setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
             return;
         }
-        
         await interaction.channel.send(messageContent);
         await interaction.deferReply({ ephemeral: true });
         await interaction.deleteReply().catch(() => {});
-        
-        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
-        if (logChannel) {
-            logChannel.send({ content: `📝 /send by ${interaction.user.tag} in ${interaction.channel.name}` }).catch(() => {});
-        }
     }
     
-    // ============================================
-    // /PRODUCT COMMAND
-    // ============================================
     if (interaction.commandName === 'product') {
         if (!interaction.member.roles.cache.has(CONFIG.PRODUCT_ROLE_ID)) {
             await interaction.reply({ content: '❌ No permission.', ephemeral: true });
             setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
             return;
         }
-        
         const productName = interaction.options.getString('name');
         const instockRaw = interaction.options.getString('instock');
         const price = interaction.options.getString('price');
@@ -697,26 +451,14 @@ client.on('interactionCreate', async (interaction) => {
             )
             .setTimestamp();
         
-        if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
-            productEmbed.setImage(imageUrl);
-        }
+        if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) productEmbed.setImage(imageUrl);
         productEmbed.setThumbnail('https://cdn-icons-png.flaticon.com/512/2331/2331970.png');
         
         const buttonId = `buy_now_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-        
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(buttonId)
-                    .setLabel('Buy Now')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('🛒'),
-                new ButtonBuilder()
-                    .setCustomId('more_info')
-                    .setLabel('More Info')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji('❓')
-            );
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(buttonId).setLabel('Buy Now').setStyle(ButtonStyle.Success).setEmoji('🛒'),
+            new ButtonBuilder().setCustomId('more_info').setLabel('More Info').setStyle(ButtonStyle.Primary).setEmoji('❓')
+        );
         
         if (!client.productData) client.productData = new Map();
         client.productData.set(buttonId, { name: productName, price: price });
@@ -724,32 +466,21 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.channel.send({ embeds: [productEmbed], components: [row] });
         await interaction.deferReply({ ephemeral: true });
         await interaction.deleteReply().catch(() => {});
-        
-        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
-        if (logChannel) {
-            logChannel.send({ content: `📝 /product by ${interaction.user.tag}: ${productName} - ${price}` }).catch(() => {});
-        }
     }
     
-    // ============================================
-    // /CLEAR COMMAND
-    // ============================================
     if (interaction.commandName === 'clear') {
         if (!interaction.member.roles.cache.has(CONFIG.CLEAR_ROLE_ID)) {
             await interaction.reply({ content: '❌ No permission.', ephemeral: true });
             setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
             return;
         }
-        
         const amount = interaction.options.getInteger('amount');
         if (amount < 1 || amount > 100) {
             await interaction.reply({ content: '❌ Number between 1-100.', ephemeral: true });
             setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
             return;
         }
-        
         await interaction.deferReply({ ephemeral: true });
-        
         try {
             const messages = await interaction.channel.messages.fetch({ limit: amount });
             if (messages.size === 0) {
@@ -757,40 +488,27 @@ client.on('interactionCreate', async (interaction) => {
                 setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
                 return;
             }
-            
             await interaction.channel.bulkDelete(messages, true);
             await interaction.editReply({ content: `✅ Cleared ${messages.size} messages.` });
             setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
-            
-            const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
-            if (logChannel) {
-                logChannel.send({ content: `📝 /clear by ${interaction.user.tag} in ${interaction.channel.name}: ${messages.size} messages` }).catch(() => {});
-            }
         } catch (error) {
             await interaction.editReply({ content: '❌ Failed. Messages may be older than 14 days.' });
             setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
         }
     }
     
-    // ============================================
-    // /REVIEW COMMAND
-    // ============================================
     if (interaction.commandName === 'review') {
         if (!interaction.member.roles.cache.has(CONFIG.REVIEW_ROLE_ID)) {
-            await interaction.reply({ content: '❌ You do not have permission to use `/review`.', ephemeral: true });
+            await interaction.reply({ content: '❌ No permission.', ephemeral: true });
             setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
             return;
         }
-        
         const stars = interaction.options.getInteger('stars');
         const product = interaction.options.getString('product');
         const reviewText = interaction.options.getString('review');
         
         const starDisplay = '⭐'.repeat(stars) + '☆'.repeat(5 - stars);
-        
-        let starColor = 0xff0000;
-        if (stars === 3) starColor = 0xffaa00;
-        if (stars >= 4) starColor = 0x00ff00;
+        let starColor = stars === 3 ? 0xffaa00 : (stars >= 4 ? 0x00ff00 : 0xff0000);
         
         const reviewEmbed = new EmbedBuilder()
             .setTitle(`📝 Review for ${product}`)
@@ -810,15 +528,66 @@ client.on('interactionCreate', async (interaction) => {
             setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
             return;
         }
-        
         await reviewChannel.send({ embeds: [reviewEmbed] });
-        await interaction.reply({ content: `✅ Your review for **${product}** has been posted! Thank you!`, ephemeral: true });
+        await interaction.reply({ content: `✅ Your review for **${product}** has been posted!`, ephemeral: true });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+    }
+});
+
+// ============================================
+// ROLE CLAIM BUTTON HANDLERS
+// ============================================
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+    
+    const roleMap = {
+        'claim_spoof': CONFIG.SPOOF_ACCOUNTS_ROLE_ID,
+        'claim_trigger': CONFIG.TRIGGER_SHOP_ROLE_ID,
+        'claim_scripts': CONFIG.SCRIPTS_ROLE_ID,
+        'claim_cheats': CONFIG.CHEATS_SOFTWARE_ROLE_ID,
+        'claim_irl': CONFIG.IRL_TRADING_ROLE_ID
+    };
+    
+    if (roleMap[interaction.customId]) {
+        const role = interaction.guild.roles.cache.get(roleMap[interaction.customId]);
+        if (!role) return interaction.reply({ content: '❌ Role not configured!', ephemeral: true });
         
-        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
-        if (logChannel) {
-            logChannel.send({ content: `📝 /review by ${interaction.user.tag}: ${stars} stars for ${product}` }).catch(() => {});
+        if (interaction.member.roles.cache.has(role.id)) {
+            await interaction.member.roles.remove(role);
+            await interaction.reply({ content: `✅ Removed role: **${role.name}**`, ephemeral: true });
+        } else {
+            await interaction.member.roles.add(role);
+            await interaction.reply({ content: `✅ Added role: **${role.name}**`, ephemeral: true });
         }
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+    }
+    
+    if (interaction.customId === 'claim_all') {
+        const roles = [CONFIG.SPOOF_ACCOUNTS_ROLE_ID, CONFIG.TRIGGER_SHOP_ROLE_ID, CONFIG.SCRIPTS_ROLE_ID, CONFIG.CHEATS_SOFTWARE_ROLE_ID, CONFIG.IRL_TRADING_ROLE_ID];
+        let added = 0;
+        for (const roleId of roles) {
+            const role = interaction.guild.roles.cache.get(roleId);
+            if (role && !interaction.member.roles.cache.has(role.id)) {
+                await interaction.member.roles.add(role);
+                added++;
+            }
+        }
+        await interaction.reply({ content: `✅ Added ${added} new role(s) to you!`, ephemeral: true });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+    }
+    
+    if (interaction.customId === 'unclaim_all') {
+        const roles = [CONFIG.SPOOF_ACCOUNTS_ROLE_ID, CONFIG.TRIGGER_SHOP_ROLE_ID, CONFIG.SCRIPTS_ROLE_ID, CONFIG.CHEATS_SOFTWARE_ROLE_ID, CONFIG.IRL_TRADING_ROLE_ID];
+        let removed = 0;
+        for (const roleId of roles) {
+            const role = interaction.guild.roles.cache.get(roleId);
+            if (role && interaction.member.roles.cache.has(role.id)) {
+                await interaction.member.roles.remove(role);
+                removed++;
+            }
+        }
+        await interaction.reply({ content: `✅ Removed ${removed} role(s) from you!`, ephemeral: true });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
     }
 });
 
@@ -827,7 +596,6 @@ client.on('interactionCreate', async (interaction) => {
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
-    
     if (interaction.customId.startsWith('buy_now_')) {
         const productData = client.productData?.get(interaction.customId);
         const productName = productData?.name || 'Unknown Product';
@@ -848,12 +616,9 @@ client.on('interactionCreate', async (interaction) => {
         }
         
         await interaction.reply({ content: `🛒 Creating ticket for ${productName}...`, ephemeral: true });
-        
         const channel = await createDirectTicket(interaction.user, interaction, productName, productPrice);
-        
         await interaction.editReply({ content: `✅ Ticket created: ${channel.toString()}` });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
-        
         if (client.productData) client.productData.delete(interaction.customId);
     }
     
@@ -863,7 +628,6 @@ client.on('interactionCreate', async (interaction) => {
             .setDescription(`Click the **Buy Now** button to create a ticket and our team will assist you.`)
             .setColor(0x0099ff)
             .setTimestamp();
-        
         await interaction.reply({ embeds: [embed], ephemeral: true });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 10000);
     }
@@ -874,7 +638,6 @@ client.on('interactionCreate', async (interaction) => {
 // ============================================
 client.on('guildMemberAdd', async (member) => {
     await updateMemberCount(member.guild);
-    
     if (joinedMembers.has(member.id)) return;
     
     try {
@@ -882,7 +645,7 @@ client.on('guildMemberAdd', async (member) => {
         if (unverifiedRole) await member.roles.add(unverifiedRole);
         
         const welcomeEmbed = new EmbedBuilder()
-            .setTitle('🎉 Welcome!')
+            .setTitle('🎉 **Welcome to HexMods!** 🎉')
             .setDescription(`Hello ${member.user.username}! Welcome to our community.\n\nPlease verify yourself in <#${CONFIG.VERIFICATION_CHANNEL_ID}> to access all channels.`)
             .setColor(0x00ff00)
             .addFields(
@@ -905,7 +668,6 @@ client.on('guildMemberAdd', async (member) => {
                 await updateMemberCount(member.guild);
             }
         }, 24 * 60 * 60 * 1000);
-        
     } catch (error) {
         console.log(`Couldn't DM ${member.user.tag}: ${error.message}`);
     }
@@ -934,13 +696,12 @@ client.on('interactionCreate', async (interaction) => {
     if (unverifiedRole) await interaction.member.roles.remove(unverifiedRole);
     
     const verifyEmbed = new EmbedBuilder()
-        .setTitle('✅ Verified!')
+        .setTitle('✅ **Verification Successful!**')
         .setDescription(`Welcome ${interaction.user.toString()}! You now have access to all channels.`)
         .setColor(0x00ff00)
         .setTimestamp();
     
     await interaction.reply({ embeds: [verifyEmbed], ephemeral: true });
-    
     console.log(`✅ Verified ${interaction.user.tag}`);
 });
 
@@ -988,7 +749,6 @@ client.on('interactionCreate', async (interaction) => {
         if (!hasPerm) return interaction.reply({ content: '❌ No permission!', ephemeral: true });
         
         await interaction.reply({ content: '🔒 Closing in 5 seconds...' });
-        
         setTimeout(async () => {
             await sendTranscript(interaction.channel, interaction);
             await interaction.channel.delete();
@@ -1015,13 +775,14 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'create_ticket_menu') {
         const embed = new EmbedBuilder()
             .setTitle('🎫 Create a Support Ticket')
-            .setDescription('Select the category:')
+            .setDescription('Select the category that best fits your needs:')
             .setColor(0x00ff00)
             .addFields(
-                { name: '📋 General Question', value: 'General inquiries', inline: false },
-                { name: '💰 Purchase', value: 'Payment issues', inline: false },
-                { name: '🛡️ Buy Support', value: 'Premium support', inline: false }
+                { name: '📋 General Question', value: 'General inquiries, questions, or feedback', inline: false },
+                { name: '💰 Purchase', value: 'Payment issues, transaction problems, or billing', inline: false },
+                { name: '🛡️ Buy Support', value: 'Premium support for paid services', inline: false }
             )
+            .setFooter({ text: 'Choose carefully - this cannot be changed' })
             .setTimestamp();
         
         const row = new ActionRowBuilder()
