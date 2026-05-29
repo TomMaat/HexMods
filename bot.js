@@ -11,6 +11,7 @@ const CONFIG = {
     
     SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509664538281381908',
     SEND_ROLE_ID: process.env.SEND_ROLE_ID,
+    PRODUCT_ROLE_ID: process.env.PRODUCT_ROLE_ID, // Role for /product command
     TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
     
@@ -83,11 +84,51 @@ async function registerCommands(guild) {
                     required: true
                 }
             ]
+        },
+        {
+            name: 'product',
+            description: 'Create a beautiful product embed',
+            options: [
+                {
+                    name: 'name',
+                    description: 'The product name',
+                    type: 3,
+                    required: true
+                },
+                {
+                    name: 'instock',
+                    description: 'Is the product in stock? (yes/no)',
+                    type: 3,
+                    required: true,
+                    choices: [
+                        { name: 'Yes ✅', value: 'yes' },
+                        { name: 'No ❌', value: 'no' }
+                    ]
+                },
+                {
+                    name: 'price',
+                    description: 'The product price (e.g., $19.99 or 20 EUR)',
+                    type: 3,
+                    required: true
+                },
+                {
+                    name: 'description',
+                    description: 'Optional product description',
+                    type: 3,
+                    required: false
+                },
+                {
+                    name: 'image',
+                    description: 'Optional image URL for the product',
+                    type: 3,
+                    required: false
+                }
+            ]
         }
     ];
     
     await guild.commands.set(commands);
-    console.log('✅ Slash command /send registered!');
+    console.log('✅ Slash commands /send and /product registered!');
 }
 
 // ============================================
@@ -97,7 +138,7 @@ async function deleteAllSlashCommands(guild) {
     try {
         const commands = await guild.commands.fetch();
         for (const command of commands.values()) {
-            if (command.name !== 'send') {
+            if (command.name !== 'send' && command.name !== 'product') {
                 await guild.commands.delete(command.id);
                 console.log(`🗑️ Deleted slash command: /${command.name}`);
             }
@@ -301,11 +342,12 @@ client.once('ready', async () => {
     }
     
     console.log('✅ Bot is fully ready!');
-    console.log('📌 Use /send <message> as a slash command!');
+    console.log('📌 Use /send <message> - Send a message as the bot');
+    console.log('📌 Use /product <name> <instock> <price> - Create a product embed');
 });
 
 // ============================================
-// /SEND SLASH COMMAND - GEEN ENKELE MELDING (NO MESSAGE AT ALL)
+// /SEND SLASH COMMAND
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
@@ -327,20 +369,75 @@ client.on('interactionCreate', async (interaction) => {
             });
         }
         
-        // Send the message first
         await interaction.channel.send(messageContent);
         
-        // Acknowledge the command WITHOUT any visible message (empty reply)
-        // This removes the "thinking" state without showing anything
         await interaction.deferReply({ ephemeral: true });
         await interaction.deleteReply();
         
-        // Log to log channel (only in logs, not visible to users)
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
                 .setTitle('📝 /send Command Used')
                 .setDescription(`**User:** ${interaction.user.tag} (${interaction.user.id})\n**Channel:** ${interaction.channel.name}\n**Message:** ${messageContent.substring(0, 500)}`)
+                .setColor(0xffaa00)
+                .setTimestamp();
+            await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+        }
+    }
+    
+    // ============================================
+    // /PRODUCT SLASH COMMAND
+    // ============================================
+    if (interaction.commandName === 'product') {
+        if (!interaction.member.roles.cache.has(CONFIG.PRODUCT_ROLE_ID)) {
+            return interaction.reply({ 
+                content: '❌ You do not have permission to use `/product`.', 
+                ephemeral: true 
+            });
+        }
+        
+        const productName = interaction.options.getString('name');
+        const instockRaw = interaction.options.getString('instock');
+        const price = interaction.options.getString('price');
+        const description = interaction.options.getString('description');
+        const imageUrl = interaction.options.getString('image');
+        
+        // Check if in stock
+        const inStock = instockRaw.toLowerCase() === 'yes';
+        
+        // Create stock status emoji and text
+        const stockStatus = inStock ? '✅ **IN STOCK**' : '❌ **OUT OF STOCK**';
+        const stockColor = inStock ? 0x00ff00 : 0xff0000;
+        
+        // Create the product embed
+        const productEmbed = new EmbedBuilder()
+            .setTitle(`🛒 ${productName}`)
+            .setDescription(description || 'No description provided.')
+            .setColor(stockColor)
+            .addFields(
+                { name: '💰 Price', value: price, inline: true },
+                { name: '📦 Stock Status', value: stockStatus, inline: true }
+            )
+            .setFooter({ text: `Requested by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+            .setTimestamp();
+        
+        // Add image if provided
+        if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
+            productEmbed.setImage(imageUrl);
+        }
+        
+        // Add thumbnail (product emoji)
+        productEmbed.setThumbnail('https://cdn-icons-png.flaticon.com/512/2331/2331970.png');
+        
+        await interaction.reply({ embeds: [productEmbed] });
+        
+        console.log(`✅ Sent /product in #${interaction.channel.name} by ${interaction.user.tag}: ${productName} - ${instockRaw} - ${price}`);
+        
+        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+        if (logChannel) {
+            const logEmbed = new EmbedBuilder()
+                .setTitle('📝 /product Command Used')
+                .setDescription(`**User:** ${interaction.user.tag} (${interaction.user.id})\n**Channel:** ${interaction.channel.name}\n**Product:** ${productName}\n**Stock:** ${instockRaw}\n**Price:** ${price}`)
                 .setColor(0xffaa00)
                 .setTimestamp();
             await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
