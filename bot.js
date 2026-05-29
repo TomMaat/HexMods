@@ -386,7 +386,7 @@ client.on('interactionCreate', async (interaction) => {
     }
     
     // ============================================
-    // /PRODUCT SLASH COMMAND - BIGGER EMBED, NO USER MESSAGE
+    // /PRODUCT SLASH COMMAND - NO PRODUCT ID
     // ============================================
     if (interaction.commandName === 'product') {
         if (!interaction.member.roles.cache.has(CONFIG.PRODUCT_ROLE_ID)) {
@@ -399,65 +399,58 @@ client.on('interactionCreate', async (interaction) => {
         const productName = interaction.options.getString('name');
         const instockRaw = interaction.options.getString('instock');
         const price = interaction.options.getString('price');
-        const description = interaction.options.getString('description');
+        const description = interaction.options.getString('description') || 'No description provided';
         const imageUrl = interaction.options.getString('image');
         
         // Check if in stock
         const inStock = instockRaw.toLowerCase() === 'yes';
         
-        // Create stock status emoji and text
+        // Create stock status text
         const stockStatus = inStock ? '✅ **IN STOCK**' : '❌ **OUT OF STOCK**';
         const stockColor = inStock ? 0x00ff00 : 0xff0000;
         
-        // Create a BIGGER, more detailed product embed
+        // Create clean product embed (NO product ID)
         const productEmbed = new EmbedBuilder()
-            .setTitle(`🛒 ${productName}`)
-            .setDescription(description || '✨ No description provided for this product.')
+            .setTitle(`${productName}`)
+            .setDescription(description)
             .setColor(stockColor)
             .addFields(
-                { name: '💰 **Price**', value: `\`\`\`${price}\`\`\``, inline: true },
-                { name: '📦 **Stock Status**', value: `\`\`\`${stockStatus}\`\`\``, inline: true },
-                { name: '🆔 **Product ID**', value: `\`\`\`${Math.random().toString(36).substring(2, 10).toUpperCase()}\`\`\``, inline: false },
-                { name: '📅 **Listed On**', value: `\`\`\`${new Date().toLocaleDateString()}\`\`\``, inline: true },
-                { name: '🔗 **Quick Actions**', value: `• Click ✅ to purchase\n• Click ❓ for more info`, inline: true }
+                { name: '💰 **Price**', value: price, inline: true },
+                { name: '📦 **Stock Status**', value: stockStatus, inline: true },
+                { name: '📅 **Listed On**', value: new Date().toLocaleDateString(), inline: true },
+                { name: '🛒 **How to Purchase**', value: 'Click the **Buy Now** button below to create a support ticket!', inline: false }
             )
-            .setFooter({ text: 'Product Information', iconURL: interaction.guild.iconURL() })
             .setTimestamp();
         
         // Add product image if provided
         if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
             productEmbed.setImage(imageUrl);
-        } else {
-            productEmbed.setImage('https://cdn-icons-png.flaticon.com/512/2331/2331970.png');
         }
         
-        // Add thumbnail
-        productEmbed.setThumbnail('https://cdn-icons-png.flaticon.com/512/2331/2331970.png');
-        
-        // Add action buttons
+        // Add action buttons - Buy Now opens ticket menu
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId('buy_product')
+                    .setCustomId('buy_now_ticket')
                     .setLabel('Buy Now')
                     .setStyle(ButtonStyle.Success)
-                    .setEmoji('✅'),
+                    .setEmoji('🛒'),
                 new ButtonBuilder()
-                    .setCustomId('info_product')
+                    .setCustomId('more_info')
                     .setLabel('More Info')
                     .setStyle(ButtonStyle.Primary)
                     .setEmoji('❓')
             );
         
+        // Send ONLY the product embed
         await interaction.reply({ embeds: [productEmbed], components: [row] });
         
-        // NO "user has used product" message - removed!
-        // Only log to log channel (invisible to users)
+        // Log to log channel only
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
                 .setTitle('📝 /product Command Used')
-                .setDescription(`**User:** ${interaction.user.tag} (${interaction.user.id})\n**Channel:** ${interaction.channel.name}\n**Product:** ${productName}\n**Stock:** ${instockRaw}\n**Price:** ${price}`)
+                .setDescription(`**User:** ${interaction.user.tag}\n**Product:** ${productName}\n**Stock:** ${instockRaw}\n**Price:** ${price}`)
                 .setColor(0xffaa00)
                 .setTimestamp();
             await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
@@ -471,20 +464,48 @@ client.on('interactionCreate', async (interaction) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
-    if (interaction.customId === 'buy_product') {
+    // BUY NOW button - opens ticket creation menu
+    if (interaction.customId === 'buy_now_ticket') {
+        // Create the ticket category selection menu
         const embed = new EmbedBuilder()
-            .setTitle('✅ Purchase Requested')
-            .setDescription(`Thank you for your interest! Please create a ticket using the ticket system to complete your purchase.`)
+            .setTitle('🛒 Purchase Request')
+            .setDescription('Please select the category for your purchase:')
             .setColor(0x00ff00)
+            .addFields(
+                { name: '📋 General Question', value: 'Questions about the product', inline: false },
+                { name: '💰 Purchase', value: 'Complete your purchase', inline: false },
+                { name: '🛡️ Buy Support', value: 'Get help with your purchase', inline: false }
+            )
+            .setFooter({ text: 'Click a button below to create a ticket' })
             .setTimestamp();
         
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('general_ticket')
+                    .setLabel('General Question')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('📋'),
+                new ButtonBuilder()
+                    .setCustomId('purchase_ticket')
+                    .setLabel('Purchase')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('💰'),
+                new ButtonBuilder()
+                    .setCustomId('buysupport_ticket')
+                    .setLabel('Buy Support')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🛡️')
+            );
+        
+        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     }
     
-    if (interaction.customId === 'info_product') {
+    // MORE INFO button
+    if (interaction.customId === 'more_info') {
         const embed = new EmbedBuilder()
             .setTitle('❓ Product Information')
-            .setDescription(`For more information about this product, please create a support ticket and our team will assist you.`)
+            .setDescription(`For more information about this product, please click the **Buy Now** button to create a ticket and our team will assist you.`)
             .setColor(0x0099ff)
             .setTimestamp();
         
