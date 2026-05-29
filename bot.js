@@ -56,7 +56,7 @@ const joinedMembers = new Set();
 
 // WORKING LOGO URL - Using a reliable placeholder image that always works
 // REPLACE THIS WITH YOUR OWN LOGO URL
-const LOGO_URL = 'https://cdn-icons-png.flaticon.com/512/2331/2331970.png';
+const LOGO_URL = 'https://cdn.discordapp.com/attachments/1509665549410635787/1509928894361370735/hexmods.png?ex=6a1af65d&is=6a19a4dd&hm=643637ec45f43a4ba8bc44df55464670b270f0c637d606472a37523fd50614f8&';
 
 // ============================================
 // UPDATE MEMBER COUNT
