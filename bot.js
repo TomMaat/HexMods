@@ -55,7 +55,7 @@ const tickets = new Map();
 const joinedMembers = new Set();
 
 // WORKING LOGO URL - Replace with your actual logo URL
-const LOGO_URL = 'https://i.imgur.com/8Y5Qm7M.png';
+const LOGO_URL = 'https://imgur.com/a/9o7Xjbj';
 
 // ============================================
 // UPDATE MEMBER COUNT
