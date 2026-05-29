@@ -16,8 +16,8 @@ const CONFIG = {
     REVIEW_ROLE_ID: process.env.REVIEW_ROLE_ID,
     VERIFIED_ROLE_ID: process.env.VERIFIED_ROLE_ID,
     UNVERIFIED_ROLE_ID: process.env.UNVERIFIED_ROLE_ID,
-    CREATE_PURCHASE_ROLE_ID: process.env.CREATE_PURCHASE_ROLE_ID, // Role to create purchases
-    PURCHASE_ROLE_ID: process.env.PURCHASE_ROLE_ID, // Role to view/purchase products
+    CREATE_PURCHASE_ROLE_ID: process.env.CREATE_PURCHASE_ROLE_ID,
+    PURCHASE_ROLE_ID: process.env.PURCHASE_ROLE_ID,
     
     SPOOF_ACCOUNTS_ROLE_ID: process.env.SPOOF_ACCOUNTS_ROLE_ID,
     TRIGGER_SHOP_ROLE_ID: process.env.TRIGGER_SHOP_ROLE_ID,
@@ -31,7 +31,7 @@ const CONFIG = {
     TICKET_CREATION_CHANNEL_ID: process.env.TICKET_CREATION_CHANNEL_ID,
     ROLE_CLAIM_CHANNEL_ID: process.env.ROLE_CLAIM_CHANNEL_ID,
     VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
-    PURCHASE_CHANNEL_ID: process.env.PURCHASE_CHANNEL_ID, // Channel where purchases are listed
+    PURCHASE_CHANNEL_ID: process.env.PURCHASE_CHANNEL_ID,
     
     TOKEN: process.env.TOKEN
 };
@@ -56,10 +56,9 @@ app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 
 const tickets = new Map();
 const joinedMembers = new Set();
-const purchases = new Map(); // Store purchase data { name: { content, type, createdBy, createdAt } }
+const purchases = new Map();
 
-// LOGO URL
-const LOGO_URL = 'https://i.imgur.com/8Y5Qm7M.png';
+const LOGO_URL = 'https://imgur.com/a/SRBY2qE';
 
 // ============================================
 // UPDATE MEMBER COUNT
@@ -520,7 +519,7 @@ client.on('interactionCreate', async (interaction) => {
             name: name,
             content: content,
             createdBy: interaction.user.tag,
-            createdAt: new Date().toISOString()
+            createdAt: Date.now()
         });
         
         // Send to purchase channel
@@ -532,11 +531,10 @@ client.on('interactionCreate', async (interaction) => {
                 .setColor(0x00ff00)
                 .setThumbnail(LOGO_URL)
                 .addFields(
-                    { name: '📦 How to purchase', value: `Use \`/purchase name:"${name}"\` to get this product.`, inline: false },
-                    { name: '🆔 Product ID', value: name.toLowerCase(), inline: true },
-                    { name: '📅 Created', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+                    { name: '📅 Created', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                    { name: '🆔 Product ID', value: name.toLowerCase(), inline: true }
                 )
-                .setFooter({ text: `Created by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+                .setFooter({ text: `To purchase, use /purchase name:"${name}"`, iconURL: client.user.displayAvatarURL() })
                 .setTimestamp();
             
             await purchaseChannel.send({ embeds: [embed] });
@@ -548,11 +546,11 @@ client.on('interactionCreate', async (interaction) => {
         // Log to log channel
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
-            logChannel.send({ content: `📝 **/createpurchase** by ${interaction.user.tag}\n**Product:** ${name}\n**Content:** ${content.substring(0, 100)}...` }).catch(() => {});
+            logChannel.send({ content: `📝 **/createpurchase** by ${interaction.user.tag}\n**Product:** ${name}` }).catch(() => {});
         }
     }
     
-    // /purchase command (Customer)
+    // /purchase command (Customer) - Sends in channel
     if (interaction.commandName === 'purchase') {
         if (!interaction.member.roles.cache.has(CONFIG.PURCHASE_ROLE_ID)) {
             await interaction.reply({ content: '❌ You do not have permission to purchase products.', flags: 64 });
@@ -569,26 +567,22 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
         
-        // Send the product content to the user in DM
-        try {
-            const dmEmbed = new EmbedBuilder()
-                .setTitle(`🛍️ **${purchase.name}**`)
-                .setDescription(purchase.content)
-                .setColor(0x00ff00)
-                .setThumbnail(LOGO_URL)
-                .addFields(
-                    { name: '📅 Purchased', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
-                    { name: '🔒 Note', value: 'Keep this message private. Do not share with others.', inline: true }
-                )
-                .setTimestamp();
-            
-            await interaction.user.send({ embeds: [dmEmbed] });
-            await interaction.reply({ content: `✅ **${purchase.name}** has been sent to your DMs!`, flags: 64 });
-            setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
-        } catch (error) {
-            await interaction.reply({ content: `❌ Could not send DM. Please enable DMs from server members.`, flags: 64 });
-            setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
-        }
+        // Send the product content in the channel (not DM)
+        const purchaseEmbed = new EmbedBuilder()
+            .setTitle(`🛍️ **${purchase.name}**`)
+            .setDescription(purchase.content)
+            .setColor(0x00ff00)
+            .setThumbnail(LOGO_URL)
+            .addFields(
+                { name: '👤 Purchased by', value: interaction.user.tag, inline: true },
+                { name: '📅 Purchased at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+            )
+            .setFooter({ text: 'Keep this information private', iconURL: client.user.displayAvatarURL() })
+            .setTimestamp();
+        
+        await interaction.channel.send({ embeds: [purchaseEmbed] });
+        await interaction.reply({ content: `✅ **${purchase.name}** has been sent to the channel!`, flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
         
         // Log to log channel
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
@@ -814,4 +808,4 @@ client.on('guildMemberRemove', async (member) => {
     await updateMemberCount(member.guild);
 });
 
-client.login(CONFIG.TOKEN);
+client.login(CONFIG.TOKEN);    
