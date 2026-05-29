@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, ChannelType, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const express = require('express');
 
 // ============================================
@@ -125,9 +125,9 @@ async function registerCommands(guild) {
         },
         {
             name: 'purchase',
-            description: 'Purchase a product',
+            description: 'Purchase a product for a user',
             options: [
-                { name: 'name', description: 'Product name to purchase', type: 3, required: true }
+                { name: 'user', description: 'The user who bought the product', type: 6, required: true }
             ]
         }
     ];
@@ -534,7 +534,7 @@ client.on('interactionCreate', async (interaction) => {
                     { name: '📅 Created', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
                     { name: '🆔 Product ID', value: name.toLowerCase(), inline: true }
                 )
-                .setFooter({ text: `To purchase, use /purchase name:"${name}"`, iconURL: client.user.displayAvatarURL() })
+                .setFooter({ text: `To purchase, use /purchase`, iconURL: client.user.displayAvatarURL() })
                 .setTimestamp();
             
             await purchaseChannel.send({ embeds: [embed] });
@@ -550,7 +550,7 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     
-    // /purchase command (Customer) - Sends in channel
+    // /purchase command - Shows dropdown menu of products
     if (interaction.commandName === 'purchase') {
         if (!interaction.member.roles.cache.has(CONFIG.PURCHASE_ROLE_ID)) {
             await interaction.reply({ content: '❌ You do not have permission to purchase products.', flags: 64 });
@@ -558,37 +558,114 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
         
-        const name = interaction.options.getString('name');
-        const purchase = purchases.get(name.toLowerCase());
+        const buyer = interaction.options.getUser('user');
         
-        if (!purchase) {
-            await interaction.reply({ content: `❌ No product found with name **${name}**.`, flags: 64 });
-            setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+        if (purchases.size === 0) {
+            await interaction.reply({ content: '❌ No products available for purchase yet.', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
             return;
         }
         
-        // Send the product content in the channel (not DM)
-        const purchaseEmbed = new EmbedBuilder()
+        // Create dropdown menu of products
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId(`purchase_select_${buyer.id}`)
+            .setPlaceholder('Select a product to purchase')
+            .addOptions(
+                Array.from(purchases.values()).map(product => {
+                    const option = new StringSelectMenuOptionBuilder()
+                        .setLabel(product.name.length > 100 ? product.name.substring(0, 97) + '...' : product.name)
+                        .setDescription(`Created: ${new Date(product.createdAt).toLocaleDateString()}`)
+                        .setValue(product.name.toLowerCase())
+                        .setEmoji('🛍️');
+                    
+                    if (product.name.length > 100) {
+                        option.setLabel(product.name.substring(0, 97) + '...');
+                    }
+                    
+                    return option;
+                })
+            );
+        
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+        
+        await interaction.reply({
+            content: `📦 **Select a product to purchase for ${buyer}**`,
+            components: [row],
+            flags: 64
+        });
+    }
+});
+
+// ============================================
+// PURCHASE SELECT MENU HANDLER
+// ============================================
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isStringSelectMenu()) return;
+    if (!interaction.customId.startsWith('purchase_select_')) return;
+    
+    const buyerId = interaction.customId.replace('purchase_select_', '');
+    const buyer = await interaction.guild.members.fetch(buyerId).catch(() => null);
+    
+    if (!buyer) {
+        await interaction.reply({ content: '❌ Buyer not found!', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        return;
+    }
+    
+    const productName = interaction.values[0];
+    const purchase = purchases.get(productName);
+    
+    if (!purchase) {
+        await interaction.reply({ content: '❌ Product not found!', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        return;
+    }
+    
+    // Send to purchase channel
+    const purchaseChannel = interaction.guild.channels.cache.get(CONFIG.PURCHASE_CHANNEL_ID);
+    if (purchaseChannel) {
+        const embed = new EmbedBuilder()
             .setTitle(`🛍️ **${purchase.name}**`)
             .setDescription(purchase.content)
             .setColor(0x00ff00)
             .setThumbnail(LOGO_URL)
             .addFields(
-                { name: '👤 Purchased by', value: interaction.user.tag, inline: true },
+                { name: '👤 Purchased by', value: buyer.user.tag, inline: true },
+                { name: '🛒 Product', value: purchase.name, inline: true },
                 { name: '📅 Purchased at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
             )
-            .setFooter({ text: 'Keep this information private', iconURL: client.user.displayAvatarURL() })
+            .setFooter({ text: 'Product delivered via DM', iconURL: client.user.displayAvatarURL() })
             .setTimestamp();
         
-        await interaction.channel.send({ embeds: [purchaseEmbed] });
-        await interaction.reply({ content: `✅ **${purchase.name}** has been sent to the channel!`, flags: 64 });
-        setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+        await purchaseChannel.send({ embeds: [embed] });
+    }
+    
+    // Send DM to the buyer with the product content
+    try {
+        const dmEmbed = new EmbedBuilder()
+            .setTitle(`🛍️ **${purchase.name}**`)
+            .setDescription(purchase.content)
+            .setColor(0x00ff00)
+            .setThumbnail(LOGO_URL)
+            .addFields(
+                { name: '📅 Purchased on', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                { name: '🔒 Note', value: 'Keep this message private. Do not share with others.', inline: true }
+            )
+            .setFooter({ text: 'Thank you for your purchase!', iconURL: client.user.displayAvatarURL() })
+            .setTimestamp();
         
-        // Log to log channel
-        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
-        if (logChannel) {
-            logChannel.send({ content: `📝 **/purchase** by ${interaction.user.tag}\n**Product:** ${name}` }).catch(() => {});
-        }
+        await buyer.send({ embeds: [dmEmbed] });
+        await interaction.reply({ content: `✅ **${purchase.name}** has been sent to ${buyer.user.tag}'s DMs!`, flags: 64 });
+    } catch (error) {
+        await interaction.reply({ content: `❌ Could not send DM to ${buyer.user.tag}. Please enable DMs from server members.`, flags: 64 });
+    }
+    
+    setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+    
+    // Log to log channel
+    const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+    if (logChannel) {
+        logChannel.send({ content: `📝 **Purchase** by ${interaction.user.tag} for ${buyer.user.tag}\n**Product:** ${purchase.name}` }).catch(() => {});
     }
 });
 
@@ -808,4 +885,4 @@ client.on('guildMemberRemove', async (member) => {
     await updateMemberCount(member.guild);
 });
 
-client.login(CONFIG.TOKEN);    
+client.login(CONFIG.TOKEN);
