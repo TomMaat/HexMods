@@ -54,8 +54,9 @@ app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 const tickets = new Map();
 const joinedMembers = new Set();
 
-// WORKING LOGO URL - Replace with your actual logo URL
-const LOGO_URL = 'https://imgur.com/a/9o7Xjbj';
+// WORKING LOGO URL - Using a reliable placeholder image that always works
+// REPLACE THIS WITH YOUR OWN LOGO URL
+const LOGO_URL = 'https://cdn-icons-png.flaticon.com/512/2331/2331970.png';
 
 // ============================================
 // UPDATE MEMBER COUNT
