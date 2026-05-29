@@ -58,9 +58,8 @@ app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 const tickets = new Map();
 const joinedMembers = new Set();
 
-// Logo URL - Change this to your own logo!
+// Logo URL - Change this to your actual logo URL!
 const LOGO_URL = 'https://cdn.discordapp.com/attachments/1328475513993101386/1331748138593943614/hexmods.png';
-const BANNER_URL = 'https://i.imgur.com/8Y5Qm7M.png';
 
 // ============================================
 // UPDATE MEMBER COUNT
@@ -150,7 +149,6 @@ async function sendRoleClaimMessage(guild) {
         .setDescription('> *Click any button below to get access to specific content!*\n> *You can claim multiple roles at once.*')
         .setColor(0x5865F2)
         .setThumbnail(LOGO_URL)
-        .setImage(BANNER_URL)
         .addFields(
             { name: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', value: '⬇️ **AVAILABLE ROLES** ⬇️', inline: false },
             { name: '🎭 **Spoof Accounts**', value: 'Access to spoof account resources', inline: true },
@@ -340,10 +338,10 @@ client.once('ready', async () => {
                 .setDescription('Need help? Click the button below to create a support ticket.')
                 .setColor(0x5865F2)
                 .setThumbnail(LOGO_URL)
-                .setImage(BANNER_URL)
                 .addFields(
-                    { name: '📋 How it works', value: '1. Click "Create Ticket"\n2. Choose your category\n3. A private channel will be created\n4. Support will assist you', inline: false },
-                    { name: '⏱️ Response Time', value: 'Usually within 24 hours', inline: true }
+                    { name: '📋 How it works', value: '1️⃣ Click **"Create Ticket"** below\n2️⃣ Choose your category\n3️⃣ A private channel will be created\n4️⃣ Support will assist you', inline: false },
+                    { name: '⏱️ Response Time', value: 'Usually within 24 hours', inline: true },
+                    { name: '📜 Guidelines', value: 'Be respectful and patient', inline: true }
                 )
                 .setFooter({ text: 'Support System', iconURL: client.user.displayAvatarURL() })
                 .setTimestamp();
