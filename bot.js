@@ -831,4 +831,47 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
     if (interaction.customId === 'create_ticket_menu') {
-        const embed =
+        const embed = new EmbedBuilder()
+            .setTitle('🎫 Create a Support Ticket')
+            .setDescription('Select the category:')
+            .setColor(0x00ff00)
+            .addFields(
+                { name: '📋 General Question', value: 'General inquiries', inline: false },
+                { name: '💰 Purchase', value: 'Payment issues', inline: false },
+                { name: '🛡️ Buy Support', value: 'Premium support', inline: false }
+            )
+            .setTimestamp();
+        
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder().setCustomId('general_ticket').setLabel('General Question').setStyle(ButtonStyle.Primary).setEmoji('📋'),
+                new ButtonBuilder().setCustomId('purchase_ticket').setLabel('Purchase').setStyle(ButtonStyle.Success).setEmoji('💰'),
+                new ButtonBuilder().setCustomId('buysupport_ticket').setLabel('Buy Support').setStyle(ButtonStyle.Danger).setEmoji('🛡️')
+            );
+        
+        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+        return;
+    }
+    
+    let categoryId = null, ticketType = null;
+    if (interaction.customId === 'general_ticket') { categoryId = CONFIG.GENERAL_CATEGORY_ID; ticketType = 'General Question'; }
+    else if (interaction.customId === 'purchase_ticket') { categoryId = CONFIG.PURCHASE_CATEGORY_ID; ticketType = 'Purchase'; }
+    else if (interaction.customId === 'buysupport_ticket') { categoryId = CONFIG.BUY_SUPPORT_CATEGORY_ID; ticketType = 'Buy Support'; }
+    
+    if (categoryId && ticketType) {
+        for (const [channelId, data] of tickets.entries()) {
+            if (data.userId === interaction.user.id) {
+                const existing = interaction.guild.channels.cache.get(channelId);
+                if (existing) {
+                    return interaction.reply({ content: `❌ You already have a ticket: ${existing.toString()}`, ephemeral: true });
+                }
+            }
+        }
+        
+        await interaction.reply({ content: `🎫 Creating ${ticketType} ticket...`, ephemeral: true });
+        const channel = await createTicketChannel(interaction.user, interaction, categoryId, ticketType);
+        await interaction.editReply({ content: `✅ Ticket created: ${channel.toString()}` });
+    }
+});
+
+client.login(CONFIG.TOKEN);
