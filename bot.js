@@ -16,6 +16,8 @@ const CONFIG = {
     REVIEW_ROLE_ID: process.env.REVIEW_ROLE_ID,
     VERIFIED_ROLE_ID: process.env.VERIFIED_ROLE_ID,
     UNVERIFIED_ROLE_ID: process.env.UNVERIFIED_ROLE_ID,
+    CREATE_PURCHASE_ROLE_ID: process.env.CREATE_PURCHASE_ROLE_ID, // Role to create purchases
+    PURCHASE_ROLE_ID: process.env.PURCHASE_ROLE_ID, // Role to view/purchase products
     
     SPOOF_ACCOUNTS_ROLE_ID: process.env.SPOOF_ACCOUNTS_ROLE_ID,
     TRIGGER_SHOP_ROLE_ID: process.env.TRIGGER_SHOP_ROLE_ID,
@@ -29,6 +31,7 @@ const CONFIG = {
     TICKET_CREATION_CHANNEL_ID: process.env.TICKET_CREATION_CHANNEL_ID,
     ROLE_CLAIM_CHANNEL_ID: process.env.ROLE_CLAIM_CHANNEL_ID,
     VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
+    PURCHASE_CHANNEL_ID: process.env.PURCHASE_CHANNEL_ID, // Channel where purchases are listed
     
     TOKEN: process.env.TOKEN
 };
@@ -53,10 +56,10 @@ app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 
 const tickets = new Map();
 const joinedMembers = new Set();
+const purchases = new Map(); // Store purchase data { name: { content, type, createdBy, createdAt } }
 
-// WORKING LOGO URL - Using a reliable placeholder image that always works
-// REPLACE THIS WITH YOUR OWN LOGO URL
-const LOGO_URL = 'https://cdn.discordapp.com/attachments/1509665549410635787/1509928894361370735/hexmods.png?ex=6a1af65d&is=6a19a4dd&hm=643637ec45f43a4ba8bc44df55464670b270f0c637d606472a37523fd50614f8&';
+// LOGO URL
+const LOGO_URL = 'https://i.imgur.com/8Y5Qm7M.png';
 
 // ============================================
 // UPDATE MEMBER COUNT
@@ -112,6 +115,21 @@ async function registerCommands(guild) {
                 { name: 'product', description: 'Product name', type: 3, required: true },
                 { name: 'review', description: 'Your review', type: 3, required: true }
             ]
+        },
+        {
+            name: 'createpurchase',
+            description: 'Create a purchase option (admin only)',
+            options: [
+                { name: 'name', description: 'Product name', type: 3, required: true },
+                { name: 'content', description: 'The file link or message to send', type: 3, required: true }
+            ]
+        },
+        {
+            name: 'purchase',
+            description: 'Purchase a product',
+            options: [
+                { name: 'name', description: 'Product name to purchase', type: 3, required: true }
+            ]
         }
     ];
     await guild.commands.set(commands);
@@ -125,7 +143,7 @@ async function deleteOldCommands(guild) {
     try {
         const commands = await guild.commands.fetch();
         for (const command of commands.values()) {
-            if (!['send', 'product', 'clear', 'review'].includes(command.name)) {
+            if (!['send', 'product', 'clear', 'review', 'createpurchase', 'purchase'].includes(command.name)) {
                 await guild.commands.delete(command.id);
             }
         }
@@ -362,6 +380,7 @@ client.once('ready', async () => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     
+    // /send command
     if (interaction.commandName === 'send') {
         if (!interaction.member.roles.cache.has(CONFIG.SEND_ROLE_ID)) {
             await interaction.reply({ content: '❌ No permission.', flags: 64 });
@@ -379,6 +398,7 @@ client.on('interactionCreate', async (interaction) => {
         setTimeout(() => interaction.deleteReply().catch(() => {}), 1000);
     }
     
+    // /product command
     if (interaction.commandName === 'product') {
         if (!interaction.member.roles.cache.has(CONFIG.PRODUCT_ROLE_ID)) {
             await interaction.reply({ content: '❌ No permission.', flags: 64 });
@@ -418,6 +438,7 @@ client.on('interactionCreate', async (interaction) => {
         setTimeout(() => interaction.deleteReply().catch(() => {}), 1000);
     }
     
+    // /clear command
     if (interaction.commandName === 'clear') {
         if (!interaction.member.roles.cache.has(CONFIG.CLEAR_ROLE_ID)) {
             await interaction.reply({ content: '❌ No permission.', flags: 64 });
@@ -447,6 +468,7 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     
+    // /review command
     if (interaction.commandName === 'review') {
         if (!interaction.member.roles.cache.has(CONFIG.REVIEW_ROLE_ID)) {
             await interaction.reply({ content: '❌ No permission.', flags: 64 });
@@ -480,6 +502,99 @@ client.on('interactionCreate', async (interaction) => {
         await reviewChannel.send({ embeds: [embed] });
         await interaction.reply({ content: `✅ Review posted!`, flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+    }
+    
+    // /createpurchase command (Admin only)
+    if (interaction.commandName === 'createpurchase') {
+        if (!interaction.member.roles.cache.has(CONFIG.CREATE_PURCHASE_ROLE_ID)) {
+            await interaction.reply({ content: '❌ You do not have permission to create purchases.', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            return;
+        }
+        
+        const name = interaction.options.getString('name');
+        const content = interaction.options.getString('content');
+        
+        // Store the purchase
+        purchases.set(name.toLowerCase(), {
+            name: name,
+            content: content,
+            createdBy: interaction.user.tag,
+            createdAt: new Date().toISOString()
+        });
+        
+        // Send to purchase channel
+        const purchaseChannel = interaction.guild.channels.cache.get(CONFIG.PURCHASE_CHANNEL_ID);
+        if (purchaseChannel) {
+            const embed = new EmbedBuilder()
+                .setTitle(`🛍️ **${name}**`)
+                .setDescription(content)
+                .setColor(0x00ff00)
+                .setThumbnail(LOGO_URL)
+                .addFields(
+                    { name: '📦 How to purchase', value: `Use \`/purchase name:"${name}"\` to get this product.`, inline: false },
+                    { name: '🆔 Product ID', value: name.toLowerCase(), inline: true },
+                    { name: '📅 Created', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+                )
+                .setFooter({ text: `Created by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+                .setTimestamp();
+            
+            await purchaseChannel.send({ embeds: [embed] });
+        }
+        
+        await interaction.reply({ content: `✅ Purchase option **${name}** has been created!`, flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        
+        // Log to log channel
+        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+        if (logChannel) {
+            logChannel.send({ content: `📝 **/createpurchase** by ${interaction.user.tag}\n**Product:** ${name}\n**Content:** ${content.substring(0, 100)}...` }).catch(() => {});
+        }
+    }
+    
+    // /purchase command (Customer)
+    if (interaction.commandName === 'purchase') {
+        if (!interaction.member.roles.cache.has(CONFIG.PURCHASE_ROLE_ID)) {
+            await interaction.reply({ content: '❌ You do not have permission to purchase products.', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            return;
+        }
+        
+        const name = interaction.options.getString('name');
+        const purchase = purchases.get(name.toLowerCase());
+        
+        if (!purchase) {
+            await interaction.reply({ content: `❌ No product found with name **${name}**.`, flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+            return;
+        }
+        
+        // Send the product content to the user in DM
+        try {
+            const dmEmbed = new EmbedBuilder()
+                .setTitle(`🛍️ **${purchase.name}**`)
+                .setDescription(purchase.content)
+                .setColor(0x00ff00)
+                .setThumbnail(LOGO_URL)
+                .addFields(
+                    { name: '📅 Purchased', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                    { name: '🔒 Note', value: 'Keep this message private. Do not share with others.', inline: true }
+                )
+                .setTimestamp();
+            
+            await interaction.user.send({ embeds: [dmEmbed] });
+            await interaction.reply({ content: `✅ **${purchase.name}** has been sent to your DMs!`, flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+        } catch (error) {
+            await interaction.reply({ content: `❌ Could not send DM. Please enable DMs from server members.`, flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+        }
+        
+        // Log to log channel
+        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+        if (logChannel) {
+            logChannel.send({ content: `📝 **/purchase** by ${interaction.user.tag}\n**Product:** ${name}` }).catch(() => {});
+        }
     }
 });
 
