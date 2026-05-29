@@ -32,7 +32,8 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.DirectMessages
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildPresences
     ]
 });
 
@@ -49,13 +50,20 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // ============================================
 async function updateMemberCount(guild) {
     try {
-        await guild.members.fetch();
+        // Force fetch all members to ensure cache is fresh
+        await guild.members.fetch({ force: true });
+        
+        // Count ONLY human members (exclude bots)
         const humanMembers = guild.members.cache.filter(member => !member.user.bot);
         const memberCount = humanMembers.size;
         
-        // Use WATCHING status with member count
-        client.user.setActivity(`${memberCount} members`, { type: 'WATCHING' });
-        console.log(`✅ Status updated: Watching ${memberCount} human members`);
+        // Set status - use WATCHING type
+        client.user.setPresence({
+            activities: [{ name: `${memberCount} members`, type: 3 }], // Type 3 = WATCHING
+            status: 'online'
+        });
+        
+        console.log(`✅ Status updated: Watching ${memberCount} human members (Total members: ${guild.members.cache.size}, Bots: ${guild.members.cache.filter(m => m.user.bot).size})`);
         
         return memberCount;
     } catch (error) {
@@ -64,16 +72,41 @@ async function updateMemberCount(guild) {
 }
 
 // ============================================
-// DELETE ALL SLASH COMMANDS
+// REGISTER SLASH COMMANDS
+// ============================================
+async function registerCommands(guild) {
+    const commands = [
+        {
+            name: 'send',
+            description: 'Send a message as the bot',
+            options: [
+                {
+                    name: 'message',
+                    description: 'The message to send',
+                    type: 3,
+                    required: true
+                }
+            ]
+        }
+    ];
+    
+    await guild.commands.set(commands);
+    console.log('✅ Slash command /send registered!');
+}
+
+// ============================================
+// DELETE ALL OLD SLASH COMMANDS
 // ============================================
 async function deleteAllSlashCommands(guild) {
     try {
         const commands = await guild.commands.fetch();
         for (const command of commands.values()) {
-            await guild.commands.delete(command.id);
-            console.log(`🗑️ Deleted slash command: /${command.name}`);
+            if (command.name !== 'send') {
+                await guild.commands.delete(command.id);
+                console.log(`🗑️ Deleted slash command: /${command.name}`);
+            }
         }
-        console.log('✅ All slash commands removed!');
+        console.log('✅ Old slash commands removed!');
     } catch (error) {
         console.log('❌ Error deleting slash commands:', error.message);
     }
@@ -222,20 +255,25 @@ client.once('ready', async () => {
     
     const guild = client.guilds.cache.first();
     if (guild) {
+        // Initial member count update
         await updateMemberCount(guild);
         
+        // Update member count every 2 minutes (more frequent)
         setInterval(async () => {
             await updateMemberCount(guild);
-        }, 300000);
+        }, 120000);
+        
+        await deleteAllSlashCommands(guild);
+        await registerCommands(guild);
     }
     
+    // Keep-alive ping for Render (every 5 minutes)
     setInterval(() => {
         console.log('🔄 Keep-alive ping');
     }, 300000);
     
     if (!guild) return;
     
-    await deleteAllSlashCommands(guild);
     await sendVerificationMessage(guild);
     
     const ticketChannel = client.channels.cache.get(CONFIG.TICKET_CREATION_CHANNEL_ID);
@@ -270,13 +308,55 @@ client.once('ready', async () => {
     }
     
     console.log('✅ Bot is fully ready!');
-    console.log('📌 Use /send <message> to send a message as the bot');
+    console.log('📌 Use /send <message> as a slash command!');
+});
+
+// ============================================
+// /SEND SLASH COMMAND
+// ============================================
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    
+    if (interaction.commandName === 'send') {
+        if (!interaction.member.roles.cache.has(CONFIG.SEND_ROLE_ID)) {
+            return interaction.reply({ 
+                content: '❌ You do not have permission to use `/send`.', 
+                ephemeral: true 
+            });
+        }
+        
+        const messageContent = interaction.options.getString('message');
+        
+        if (!messageContent || messageContent.trim() === '') {
+            return interaction.reply({ 
+                content: '❌ Please provide a message to send.', 
+                ephemeral: true 
+            });
+        }
+        
+        await interaction.deferReply({ ephemeral: true });
+        await interaction.channel.send(messageContent);
+        await interaction.editReply({ content: '✅ Message sent successfully!', ephemeral: true });
+        
+        console.log(`✅ Sent /send in #${interaction.channel.name} by ${interaction.user.tag}: ${messageContent.substring(0, 50)}`);
+        
+        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+        if (logChannel) {
+            const logEmbed = new EmbedBuilder()
+                .setTitle('📝 /send Command Used')
+                .setDescription(`**User:** ${interaction.user.tag} (${interaction.user.id})\n**Channel:** ${interaction.channel.name}\n**Message:** ${messageContent.substring(0, 500)}`)
+                .setColor(0xffaa00)
+                .setTimestamp();
+            await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+        }
+    }
 });
 
 // ============================================
 // WELCOME DM FOR NEW MEMBERS
 // ============================================
 client.on('guildMemberAdd', async (member) => {
+    // Update member count immediately
     await updateMemberCount(member.guild);
     
     if (joinedMembers.has(member.id)) return;
@@ -302,7 +382,7 @@ client.on('guildMemberAdd', async (member) => {
         joinedMembers.add(member.id);
         console.log(`📨 Sent welcome DM to ${member.user.tag}`);
         
-        // Auto-kick after 24 hours (86400000 ms)
+        // Auto-kick after 24 hours
         setTimeout(async () => {
             const freshMember = await member.guild.members.fetch(member.id).catch(() => null);
             if (freshMember && !freshMember.roles.cache.has(CONFIG.VERIFIED_ROLE_ID)) {
@@ -310,7 +390,7 @@ client.on('guildMemberAdd', async (member) => {
                 console.log(`⏰ Kicked ${member.user.tag} for not verifying within 24 hours`);
                 await updateMemberCount(member.guild);
             }
-        }, 24 * 60 * 60 * 1000); // 24 hours
+        }, 24 * 60 * 60 * 1000);
         
     } catch (error) {
         console.log(`Couldn't send welcome DM to ${member.user.tag}: ${error.message}`);
@@ -358,59 +438,6 @@ client.on('interactionCreate', async (interaction) => {
     }
     
     console.log(`✅ Verified ${interaction.user.tag}`);
-});
-
-// ============================================
-// /SEND COMMAND - FIXED (NO DELAY, NO DISAPPEARING)
-// ============================================
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
-    
-    if (message.content.toLowerCase().startsWith('/send ')) {
-        // Permission check
-        if (!message.member.roles.cache.has(CONFIG.SEND_ROLE_ID)) {
-            const errorMsg = await message.reply({ 
-                content: '❌ You do not have permission to use `/send`.', 
-                allowedMentions: { repliedUser: false } 
-            });
-            setTimeout(async () => {
-                await message.delete().catch(() => {});
-                await errorMsg.delete().catch(() => {});
-            }, 3000);
-            return;
-        }
-        
-        const msgContent = message.content.slice(6);
-        if (!msgContent || msgContent.trim() === '') {
-            const errorMsg = await message.reply({ 
-                content: '❌ Usage: `/send your message here`', 
-                allowedMentions: { repliedUser: false } 
-            });
-            setTimeout(async () => {
-                await message.delete().catch(() => {});
-                await errorMsg.delete().catch(() => {});
-            }, 3000);
-            return;
-        }
-        
-        // Delete the command message immediately
-        await message.delete().catch(() => {});
-        
-        // Send the message as the bot (plain text)
-        await message.channel.send(msgContent);
-        
-        console.log(`✅ Sent /send in #${message.channel.name} by ${message.author.tag}: ${msgContent.substring(0, 50)}`);
-        
-        const logChannel = message.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
-        if (logChannel) {
-            const logEmbed = new EmbedBuilder()
-                .setTitle('📝 /send Command Used')
-                .setDescription(`**User:** ${message.author.tag} (${message.author.id})\n**Channel:** ${message.channel.name}\n**Message:** ${msgContent.substring(0, 500)}`)
-                .setColor(0xffaa00)
-                .setTimestamp();
-            await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
-        }
-    }
 });
 
 // ============================================
