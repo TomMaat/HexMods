@@ -5,12 +5,10 @@ const express = require('express');
 // CONFIG - ENVIRONMENT VARIABLES
 // ============================================
 const CONFIG = {
-    // Ticket Categories
     GENERAL_CATEGORY_ID: process.env.GENERAL_CATEGORY_ID,
     PURCHASE_CATEGORY_ID: process.env.PURCHASE_CATEGORY_ID,
     BUY_SUPPORT_CATEGORY_ID: process.env.BUY_SUPPORT_CATEGORY_ID,
     
-    // Roles
     SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509664538281381908',
     SEND_ROLE_ID: process.env.SEND_ROLE_ID,
     PRODUCT_ROLE_ID: process.env.PRODUCT_ROLE_ID,
@@ -19,14 +17,12 @@ const CONFIG = {
     VERIFIED_ROLE_ID: process.env.VERIFIED_ROLE_ID,
     UNVERIFIED_ROLE_ID: process.env.UNVERIFIED_ROLE_ID,
     
-    // Role Claim Roles
     SPOOF_ACCOUNTS_ROLE_ID: process.env.SPOOF_ACCOUNTS_ROLE_ID,
     TRIGGER_SHOP_ROLE_ID: process.env.TRIGGER_SHOP_ROLE_ID,
     SCRIPTS_ROLE_ID: process.env.SCRIPTS_ROLE_ID,
     CHEATS_SOFTWARE_ROLE_ID: process.env.CHEATS_SOFTWARE_ROLE_ID,
     IRL_TRADING_ROLE_ID: process.env.IRL_TRADING_ROLE_ID,
     
-    // Channels
     REVIEW_CHANNEL_ID: process.env.REVIEW_CHANNEL_ID,
     TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
@@ -58,8 +54,8 @@ app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 const tickets = new Map();
 const joinedMembers = new Set();
 
-// Logo URL - Change this to your actual logo URL!
-const LOGO_URL = 'https://cdn.discordapp.com/attachments/1328475513993101386/1331748138593943614/hexmods.png';
+// WORKING LOGO URL - Replace with your actual logo URL
+const LOGO_URL = 'https://i.imgur.com/8Y5Qm7M.png';
 
 // ============================================
 // UPDATE MEMBER COUNT
@@ -136,7 +132,36 @@ async function deleteOldCommands(guild) {
 }
 
 // ============================================
-// BEAUTIFUL ROLE CLAIM EMBED (BLACK BUTTONS)
+// SUPPORT TICKET SYSTEM EMBED
+// ============================================
+async function sendTicketMessage(guild) {
+    const channel = guild.channels.cache.get(CONFIG.TICKET_CREATION_CHANNEL_ID);
+    if (!channel) return;
+    
+    await channel.bulkDelete(await channel.messages.fetch()).catch(() => {});
+    
+    const embed = new EmbedBuilder()
+        .setTitle('🎫 **SUPPORT TICKET SYSTEM**')
+        .setDescription('Need help? Click the button below to create a support ticket.')
+        .setColor(0x5865F2)
+        .setThumbnail(LOGO_URL)
+        .addFields(
+            { name: '📋 How it works', value: '1️⃣ Click **"Create Ticket"** below\n2️⃣ Choose your category\n3️⃣ A private channel will be created\n4️⃣ Support will assist you', inline: false },
+            { name: '⏱️ Response Time', value: 'Usually within 24 hours', inline: true },
+            { name: '📜 Guidelines', value: 'Be respectful and patient', inline: true }
+        )
+        .setFooter({ text: 'Support System', iconURL: client.user.displayAvatarURL() })
+        .setTimestamp();
+    
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('create_ticket_menu').setLabel('Create Ticket').setStyle(ButtonStyle.Success).setEmoji('🎫')
+    );
+    await channel.send({ embeds: [embed], components: [row] });
+    console.log('✅ Ticket system embed sent!');
+}
+
+// ============================================
+// BEAUTIFUL ROLE CLAIM EMBED
 // ============================================
 async function sendRoleClaimMessage(guild) {
     const channel = guild.channels.cache.get(CONFIG.ROLE_CLAIM_CHANNEL_ID);
@@ -160,7 +185,6 @@ async function sendRoleClaimMessage(guild) {
         .setFooter({ text: '✦ Click to toggle roles on/off ✦', iconURL: client.user.displayAvatarURL() })
         .setTimestamp();
     
-    // Individual role buttons - BLACK color (ButtonStyle.Secondary)
     const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('claim_spoof').setLabel('Spoof Accounts').setStyle(ButtonStyle.Secondary).setEmoji('🎭'),
         new ButtonBuilder().setCustomId('claim_trigger').setLabel('Trigger Shop').setStyle(ButtonStyle.Secondary).setEmoji('🛒'),
@@ -170,19 +194,17 @@ async function sendRoleClaimMessage(guild) {
         new ButtonBuilder().setCustomId('claim_cheats').setLabel('Cheats/Software').setStyle(ButtonStyle.Secondary).setEmoji('💻'),
         new ButtonBuilder().setCustomId('claim_irl').setLabel('IRL-Trading').setStyle(ButtonStyle.Secondary).setEmoji('🔄')
     );
-    
-    // Claim All (GREEN) and Remove All (RED) buttons
     const row3 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('claim_all').setLabel('Claim All Roles').setStyle(ButtonStyle.Success).setEmoji('✅'),
         new ButtonBuilder().setCustomId('unclaim_all').setLabel('Remove All Roles').setStyle(ButtonStyle.Danger).setEmoji('❌')
     );
     
     await channel.send({ embeds: [embed], components: [row1, row2, row3] });
-    console.log('✅ Role claim embed sent with black buttons!');
+    console.log('✅ Role claim embed sent!');
 }
 
 // ============================================
-// VERIFICATION SYSTEM (NO AUTO-KICK)
+// VERIFICATION SYSTEM
 // ============================================
 async function sendVerificationMessage(guild) {
     const channel = guild.channels.cache.get(CONFIG.VERIFICATION_CHANNEL_ID);
@@ -328,28 +350,7 @@ client.once('ready', async () => {
         await registerCommands(guild);
         await sendVerificationMessage(guild);
         await sendRoleClaimMessage(guild);
-        
-        // Ticket Channel Setup
-        const ticketChannel = guild.channels.cache.get(CONFIG.TICKET_CREATION_CHANNEL_ID);
-        if (ticketChannel) {
-            await ticketChannel.bulkDelete(await ticketChannel.messages.fetch()).catch(() => {});
-            const embed = new EmbedBuilder()
-                .setTitle('🎫 **SUPPORT TICKET SYSTEM**')
-                .setDescription('Need help? Click the button below to create a support ticket.')
-                .setColor(0x5865F2)
-                .setThumbnail(LOGO_URL)
-                .addFields(
-                    { name: '📋 How it works', value: '1️⃣ Click **"Create Ticket"** below\n2️⃣ Choose your category\n3️⃣ A private channel will be created\n4️⃣ Support will assist you', inline: false },
-                    { name: '⏱️ Response Time', value: 'Usually within 24 hours', inline: true },
-                    { name: '📜 Guidelines', value: 'Be respectful and patient', inline: true }
-                )
-                .setFooter({ text: 'Support System', iconURL: client.user.displayAvatarURL() })
-                .setTimestamp();
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('create_ticket_menu').setLabel('Create Ticket').setStyle(ButtonStyle.Success).setEmoji('🎫')
-            );
-            await ticketChannel.send({ embeds: [embed], components: [row] });
-        }
+        await sendTicketMessage(guild);
     }
     console.log('✅ Bot is fully ready!');
 });
@@ -360,7 +361,6 @@ client.once('ready', async () => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     
-    // /send command
     if (interaction.commandName === 'send') {
         if (!interaction.member.roles.cache.has(CONFIG.SEND_ROLE_ID)) {
             await interaction.reply({ content: '❌ No permission.', flags: 64 });
@@ -378,7 +378,6 @@ client.on('interactionCreate', async (interaction) => {
         setTimeout(() => interaction.deleteReply().catch(() => {}), 1000);
     }
     
-    // /product command
     if (interaction.commandName === 'product') {
         if (!interaction.member.roles.cache.has(CONFIG.PRODUCT_ROLE_ID)) {
             await interaction.reply({ content: '❌ No permission.', flags: 64 });
@@ -399,8 +398,7 @@ client.on('interactionCreate', async (interaction) => {
             .addFields(
                 { name: '💰 Price', value: price, inline: true },
                 { name: '📦 Stock', value: inStock ? '✅ IN STOCK' : '❌ OUT OF STOCK', inline: true },
-                { name: '📅 Listed', value: new Date().toLocaleDateString(), inline: true },
-                { name: '🛒 Purchase', value: 'Click **Buy Now** below!', inline: false }
+                { name: '📅 Listed', value: new Date().toLocaleDateString(), inline: true }
             )
             .setTimestamp();
         if (img?.startsWith('http')) embed.setImage(img);
@@ -419,7 +417,6 @@ client.on('interactionCreate', async (interaction) => {
         setTimeout(() => interaction.deleteReply().catch(() => {}), 1000);
     }
     
-    // /clear command
     if (interaction.commandName === 'clear') {
         if (!interaction.member.roles.cache.has(CONFIG.CLEAR_ROLE_ID)) {
             await interaction.reply({ content: '❌ No permission.', flags: 64 });
@@ -449,7 +446,6 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     
-    // /review command
     if (interaction.commandName === 'review') {
         if (!interaction.member.roles.cache.has(CONFIG.REVIEW_ROLE_ID)) {
             await interaction.reply({ content: '❌ No permission.', flags: 64 });
@@ -472,7 +468,6 @@ client.on('interactionCreate', async (interaction) => {
                 { name: '🛒 Product', value: product, inline: true },
                 { name: '👤 Reviewer', value: interaction.user.tag, inline: true }
             )
-            .setThumbnail(interaction.user.displayAvatarURL())
             .setTimestamp();
         
         const reviewChannel = interaction.guild.channels.cache.get(CONFIG.REVIEW_CHANNEL_ID);
@@ -493,7 +488,6 @@ client.on('interactionCreate', async (interaction) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
-    // Role Claim Buttons
     const roleMap = {
         'claim_spoof': CONFIG.SPOOF_ACCOUNTS_ROLE_ID,
         'claim_trigger': CONFIG.TRIGGER_SHOP_ROLE_ID,
@@ -516,7 +510,6 @@ client.on('interactionCreate', async (interaction) => {
         setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
     }
     
-    // Claim All Roles
     if (interaction.customId === 'claim_all') {
         const roles = [CONFIG.SPOOF_ACCOUNTS_ROLE_ID, CONFIG.TRIGGER_SHOP_ROLE_ID, CONFIG.SCRIPTS_ROLE_ID, CONFIG.CHEATS_SOFTWARE_ROLE_ID, CONFIG.IRL_TRADING_ROLE_ID];
         let added = 0;
@@ -531,7 +524,6 @@ client.on('interactionCreate', async (interaction) => {
         setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
     }
     
-    // Unclaim All Roles
     if (interaction.customId === 'unclaim_all') {
         const roles = [CONFIG.SPOOF_ACCOUNTS_ROLE_ID, CONFIG.TRIGGER_SHOP_ROLE_ID, CONFIG.SCRIPTS_ROLE_ID, CONFIG.CHEATS_SOFTWARE_ROLE_ID, CONFIG.IRL_TRADING_ROLE_ID];
         let removed = 0;
@@ -546,7 +538,6 @@ client.on('interactionCreate', async (interaction) => {
         setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
     }
     
-    // Buy Now Button
     if (interaction.customId.startsWith('buy_')) {
         const product = client.products?.get(interaction.customId);
         const name = product?.name || 'Unknown';
@@ -573,7 +564,6 @@ client.on('interactionCreate', async (interaction) => {
         client.products?.delete(interaction.customId);
     }
     
-    // More Info Button
     if (interaction.customId === 'more_info') {
         const embed = new EmbedBuilder()
             .setTitle('❓ Product Info')
@@ -585,7 +575,6 @@ client.on('interactionCreate', async (interaction) => {
         setTimeout(() => interaction.deleteReply().catch(() => {}), 10000);
     }
     
-    // Verification Button
     if (interaction.customId === 'verify_button') {
         const verified = interaction.guild.roles.cache.get(CONFIG.VERIFIED_ROLE_ID);
         const unverified = interaction.guild.roles.cache.get(CONFIG.UNVERIFIED_ROLE_ID);
@@ -604,7 +593,6 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ embeds: [embed], flags: 64 });
     }
     
-    // Create Ticket Menu
     if (interaction.customId === 'create_ticket_menu') {
         const embed = new EmbedBuilder()
             .setTitle('🎫 **CREATE A SUPPORT TICKET**')
@@ -629,7 +617,6 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    // Ticket Type Selection
     let catId = null, type = null;
     if (interaction.customId === 'general_ticket') { catId = CONFIG.GENERAL_CATEGORY_ID; type = 'General Question'; }
     else if (interaction.customId === 'purchase_ticket') { catId = CONFIG.PURCHASE_CATEGORY_ID; type = 'Purchase'; }
@@ -646,7 +633,6 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.editReply({ content: `✅ Ticket created: ${channel}` });
     }
     
-    // Ticket Management
     const ticket = tickets.get(interaction.channelId);
     if (!ticket) return;
     
@@ -682,7 +668,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
-// GUILD MEMBER EVENTS (NO AUTO-KICK)
+// GUILD MEMBER EVENTS
 // ============================================
 client.on('guildMemberAdd', async (member) => {
     await updateMemberCount(member.guild);
