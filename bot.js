@@ -11,7 +11,7 @@ const CONFIG = {
     BUY_SUPPORT_CATEGORY_ID: process.env.BUY_SUPPORT_CATEGORY_ID,
     
     // Roles
-    SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509663687449903134',
+    SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509664538281381908',
     SEND_ROLE_ID: process.env.SEND_ROLE_ID,
     PRODUCT_ROLE_ID: process.env.PRODUCT_ROLE_ID,
     CLEAR_ROLE_ID: process.env.CLEAR_ROLE_ID,
@@ -137,7 +137,7 @@ async function deleteOldCommands(guild) {
 }
 
 // ============================================
-// BEAUTIFUL ROLE CLAIM EMBED
+// BEAUTIFUL ROLE CLAIM EMBED (BLACK BUTTONS)
 // ============================================
 async function sendRoleClaimMessage(guild) {
     const channel = guild.channels.cache.get(CONFIG.ROLE_CLAIM_CHANNEL_ID);
@@ -162,22 +162,25 @@ async function sendRoleClaimMessage(guild) {
         .setFooter({ text: '✦ Click to toggle roles on/off ✦', iconURL: client.user.displayAvatarURL() })
         .setTimestamp();
     
+    // Individual role buttons - BLACK color (ButtonStyle.Secondary)
     const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('claim_spoof').setLabel('Spoof Accounts').setStyle(ButtonStyle.Primary).setEmoji('🎭'),
-        new ButtonBuilder().setCustomId('claim_trigger').setLabel('Trigger Shop').setStyle(ButtonStyle.Success).setEmoji('🛒'),
-        new ButtonBuilder().setCustomId('claim_scripts').setLabel('Scripts').setStyle(ButtonStyle.Primary).setEmoji('📜')
+        new ButtonBuilder().setCustomId('claim_spoof').setLabel('Spoof Accounts').setStyle(ButtonStyle.Secondary).setEmoji('🎭'),
+        new ButtonBuilder().setCustomId('claim_trigger').setLabel('Trigger Shop').setStyle(ButtonStyle.Secondary).setEmoji('🛒'),
+        new ButtonBuilder().setCustomId('claim_scripts').setLabel('Scripts').setStyle(ButtonStyle.Secondary).setEmoji('📜')
     );
     const row2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('claim_cheats').setLabel('Cheats/Software').setStyle(ButtonStyle.Danger).setEmoji('💻'),
+        new ButtonBuilder().setCustomId('claim_cheats').setLabel('Cheats/Software').setStyle(ButtonStyle.Secondary).setEmoji('💻'),
         new ButtonBuilder().setCustomId('claim_irl').setLabel('IRL-Trading').setStyle(ButtonStyle.Secondary).setEmoji('🔄')
     );
+    
+    // Claim All (GREEN) and Remove All (RED) buttons
     const row3 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('claim_all').setLabel('Claim All Roles').setStyle(ButtonStyle.Success).setEmoji('✅'),
         new ButtonBuilder().setCustomId('unclaim_all').setLabel('Remove All Roles').setStyle(ButtonStyle.Danger).setEmoji('❌')
     );
     
     await channel.send({ embeds: [embed], components: [row1, row2, row3] });
-    console.log('✅ Role claim embed sent!');
+    console.log('✅ Role claim embed sent with black buttons!');
 }
 
 // ============================================
