@@ -13,16 +13,23 @@ const CONFIG = {
     SEND_ROLE_ID: process.env.SEND_ROLE_ID,
     PRODUCT_ROLE_ID: process.env.PRODUCT_ROLE_ID,
     CLEAR_ROLE_ID: process.env.CLEAR_ROLE_ID,
-    REVIEW_ROLE_ID: process.env.REVIEW_ROLE_ID,  // NEW: Role for /review command
-    REVIEW_CHANNEL_ID: process.env.REVIEW_CHANNEL_ID,  // NEW: Channel where reviews are posted
+    REVIEW_ROLE_ID: process.env.REVIEW_ROLE_ID,
+    REVIEW_CHANNEL_ID: process.env.REVIEW_CHANNEL_ID,
     TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
     
     TICKET_CREATION_CHANNEL_ID: process.env.TICKET_CREATION_CHANNEL_ID,
+    ROLE_CLAIM_CHANNEL_ID: process.env.ROLE_CLAIM_CHANNEL_ID,  // NEW: Channel for role claim embed
     
     VERIFIED_ROLE_ID: process.env.VERIFIED_ROLE_ID,
     UNVERIFIED_ROLE_ID: process.env.UNVERIFIED_ROLE_ID,
     VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
+    
+    // Role Claim Roles
+    SPOOF_ACCOUNTS_ROLE_ID: process.env.SPOOF_ACCOUNTS_ROLE_ID,
+    TRIGGER_SHOP_ROLE_ID: process.env.TRIGGER_SHOP_ROLE_ID,
+    SCRIPTS_ROLE_ID: process.env.SCRIPTS_ROLE_ID,
+    CHEATS_SOFTWARE_ROLE_ID: process.env.CHEATS_SOFTWARE_ROLE_ID,
     
     TOKEN: process.env.TOKEN
 };
@@ -193,6 +200,77 @@ async function deleteAllSlashCommands(guild) {
     } catch (error) {
         console.log('❌ Error:', error.message);
     }
+}
+
+// ============================================
+// ROLE CLAIM EMBED SETUP
+// ============================================
+async function sendRoleClaimMessage(guild) {
+    const roleClaimChannel = guild.channels.cache.get(CONFIG.ROLE_CLAIM_CHANNEL_ID);
+    if (!roleClaimChannel) {
+        console.log('❌ Role claim channel not found!');
+        return;
+    }
+    
+    // Clear previous messages
+    const messages = await roleClaimChannel.messages.fetch();
+    if (messages.size > 0) await roleClaimChannel.bulkDelete(messages).catch(() => {});
+    
+    const embed = new EmbedBuilder()
+        .setTitle('🎭 **Claim Your Roles**')
+        .setDescription('Click the buttons below to claim roles and access specific content channels!\n\n*You can claim multiple roles.*')
+        .setColor(0x5865F2)
+        .addFields(
+            { name: '━━━━━━━━━━━━━━━━━━━━━━', value: '⬇️ **Available Roles** ⬇️', inline: false },
+            { name: '🎭 **Spoof Accounts**', value: 'Access to spoof account discussions and resources', inline: true },
+            { name: '🛒 **Trigger Shop**', value: 'Access to trigger shop and related content', inline: true },
+            { name: '📜 **Scripts**', value: 'Access to script sharing and discussions', inline: true },
+            { name: '💻 **Cheats/Software**', value: 'Access to cheats and software channels', inline: true }
+        )
+        .setThumbnail(guild.iconURL())
+        .setFooter({ text: 'Click any button to claim/unclaim a role', iconURL: client.user.displayAvatarURL() })
+        .setTimestamp();
+    
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('claim_spoof')
+                .setLabel('Spoof Accounts')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🎭'),
+            new ButtonBuilder()
+                .setCustomId('claim_trigger')
+                .setLabel('Trigger Shop')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('🛒'),
+            new ButtonBuilder()
+                .setCustomId('claim_scripts')
+                .setLabel('Scripts')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('📜'),
+            new ButtonBuilder()
+                .setCustomId('claim_cheats')
+                .setLabel('Cheats/Software')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('💻')
+        );
+    
+    const row2 = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('claim_all')
+                .setLabel('Claim All Roles')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('✅'),
+            new ButtonBuilder()
+                .setCustomId('unclaim_all')
+                .setLabel('Remove All Roles')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('❌')
+        );
+    
+    await roleClaimChannel.send({ embeds: [embed], components: [row, row2] });
+    console.log('✅ Role claim message sent!');
 }
 
 // ============================================
@@ -410,6 +488,7 @@ client.once('ready', async () => {
     if (!guild) return;
     
     await sendVerificationMessage(guild);
+    await sendRoleClaimMessage(guild);  // NEW: Send role claim embed
     
     const ticketChannel = client.channels.cache.get(CONFIG.TICKET_CREATION_CHANNEL_ID);
     if (ticketChannel) {
@@ -446,7 +525,118 @@ client.once('ready', async () => {
 });
 
 // ============================================
-// /SEND COMMAND - NO VISIBLE MESSAGES
+// ROLE CLAIM BUTTON HANDLERS
+// ============================================
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+    
+    // Spoof Accounts role
+    if (interaction.customId === 'claim_spoof') {
+        const role = interaction.guild.roles.cache.get(CONFIG.SPOOF_ACCOUNTS_ROLE_ID);
+        if (!role) return interaction.reply({ content: '❌ Role not configured!', ephemeral: true });
+        
+        if (interaction.member.roles.cache.has(role.id)) {
+            await interaction.member.roles.remove(role);
+            await interaction.reply({ content: `✅ Removed role: **${role.name}**`, ephemeral: true });
+        } else {
+            await interaction.member.roles.add(role);
+            await interaction.reply({ content: `✅ Added role: **${role.name}**`, ephemeral: true });
+        }
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+    }
+    
+    // Trigger Shop role
+    if (interaction.customId === 'claim_trigger') {
+        const role = interaction.guild.roles.cache.get(CONFIG.TRIGGER_SHOP_ROLE_ID);
+        if (!role) return interaction.reply({ content: '❌ Role not configured!', ephemeral: true });
+        
+        if (interaction.member.roles.cache.has(role.id)) {
+            await interaction.member.roles.remove(role);
+            await interaction.reply({ content: `✅ Removed role: **${role.name}**`, ephemeral: true });
+        } else {
+            await interaction.member.roles.add(role);
+            await interaction.reply({ content: `✅ Added role: **${role.name}**`, ephemeral: true });
+        }
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+    }
+    
+    // Scripts role
+    if (interaction.customId === 'claim_scripts') {
+        const role = interaction.guild.roles.cache.get(CONFIG.SCRIPTS_ROLE_ID);
+        if (!role) return interaction.reply({ content: '❌ Role not configured!', ephemeral: true });
+        
+        if (interaction.member.roles.cache.has(role.id)) {
+            await interaction.member.roles.remove(role);
+            await interaction.reply({ content: `✅ Removed role: **${role.name}**`, ephemeral: true });
+        } else {
+            await interaction.member.roles.add(role);
+            await interaction.reply({ content: `✅ Added role: **${role.name}**`, ephemeral: true });
+        }
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+    }
+    
+    // Cheats/Software role
+    if (interaction.customId === 'claim_cheats') {
+        const role = interaction.guild.roles.cache.get(CONFIG.CHEATS_SOFTWARE_ROLE_ID);
+        if (!role) return interaction.reply({ content: '❌ Role not configured!', ephemeral: true });
+        
+        if (interaction.member.roles.cache.has(role.id)) {
+            await interaction.member.roles.remove(role);
+            await interaction.reply({ content: `✅ Removed role: **${role.name}**`, ephemeral: true });
+        } else {
+            await interaction.member.roles.add(role);
+            await interaction.reply({ content: `✅ Added role: **${role.name}**`, ephemeral: true });
+        }
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+    }
+    
+    // Claim All Roles
+    if (interaction.customId === 'claim_all') {
+        const roles = [
+            CONFIG.SPOOF_ACCOUNTS_ROLE_ID,
+            CONFIG.TRIGGER_SHOP_ROLE_ID,
+            CONFIG.SCRIPTS_ROLE_ID,
+            CONFIG.CHEATS_SOFTWARE_ROLE_ID
+        ];
+        
+        let added = 0;
+        for (const roleId of roles) {
+            const role = interaction.guild.roles.cache.get(roleId);
+            if (role && !interaction.member.roles.cache.has(role.id)) {
+                await interaction.member.roles.add(role);
+                added++;
+            }
+        }
+        
+        await interaction.reply({ content: `✅ Added ${added} new role(s) to you!`, ephemeral: true });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+    }
+    
+    // Unclaim All Roles
+    if (interaction.customId === 'unclaim_all') {
+        const roles = [
+            CONFIG.SPOOF_ACCOUNTS_ROLE_ID,
+            CONFIG.TRIGGER_SHOP_ROLE_ID,
+            CONFIG.SCRIPTS_ROLE_ID,
+            CONFIG.CHEATS_SOFTWARE_ROLE_ID
+        ];
+        
+        let removed = 0;
+        for (const roleId of roles) {
+            const role = interaction.guild.roles.cache.get(roleId);
+            if (role && interaction.member.roles.cache.has(role.id)) {
+                await interaction.member.roles.remove(role);
+                removed++;
+            }
+        }
+        
+        await interaction.reply({ content: `✅ Removed ${removed} role(s) from you!`, ephemeral: true });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+    }
+});
+
+// ============================================
+// /SEND COMMAND
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
@@ -476,7 +666,7 @@ client.on('interactionCreate', async (interaction) => {
     }
     
     // ============================================
-    // /PRODUCT COMMAND - NO VISIBLE USER MESSAGE
+    // /PRODUCT COMMAND
     // ============================================
     if (interaction.commandName === 'product') {
         if (!interaction.member.roles.cache.has(CONFIG.PRODUCT_ROLE_ID)) {
@@ -596,15 +786,12 @@ client.on('interactionCreate', async (interaction) => {
         const product = interaction.options.getString('product');
         const reviewText = interaction.options.getString('review');
         
-        // Create star rating display
         const starDisplay = '⭐'.repeat(stars) + '☆'.repeat(5 - stars);
         
-        // Get star color based on rating
-        let starColor = 0xff0000; // Red for 1-2 stars
-        if (stars === 3) starColor = 0xffaa00; // Orange for 3 stars
-        if (stars >= 4) starColor = 0x00ff00; // Green for 4-5 stars
+        let starColor = 0xff0000;
+        if (stars === 3) starColor = 0xffaa00;
+        if (stars >= 4) starColor = 0x00ff00;
         
-        // Create review embed
         const reviewEmbed = new EmbedBuilder()
             .setTitle(`📝 Review for ${product}`)
             .setDescription(`"${reviewText}"`)
@@ -617,7 +804,6 @@ client.on('interactionCreate', async (interaction) => {
             .setThumbnail(interaction.user.displayAvatarURL())
             .setTimestamp();
         
-        // Send to review channel
         const reviewChannel = interaction.guild.channels.cache.get(CONFIG.REVIEW_CHANNEL_ID);
         if (!reviewChannel) {
             await interaction.reply({ content: '❌ Review channel not configured!', ephemeral: true });
@@ -626,15 +812,9 @@ client.on('interactionCreate', async (interaction) => {
         }
         
         await reviewChannel.send({ embeds: [reviewEmbed] });
-        
-        // Acknowledge the user (ephemeral, will be deleted)
-        await interaction.reply({ 
-            content: `✅ Your review for **${product}** has been posted! Thank you for your feedback!`, 
-            ephemeral: true 
-        });
+        await interaction.reply({ content: `✅ Your review for **${product}** has been posted! Thank you!`, ephemeral: true });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
         
-        // Log to log channel
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             logChannel.send({ content: `📝 /review by ${interaction.user.tag}: ${stars} stars for ${product}` }).catch(() => {});
@@ -772,6 +952,8 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId.startsWith('buy_now_') || interaction.customId === 'more_info') return;
     if (interaction.customId === 'create_ticket_menu') return;
     if (interaction.customId === 'general_ticket' || interaction.customId === 'purchase_ticket' || interaction.customId === 'buysupport_ticket') return;
+    if (interaction.customId.startsWith('claim_') || interaction.customId === 'claim_all' || interaction.customId === 'unclaim_all') return;
+    if (interaction.customId === 'verify_button') return;
     
     const ticketData = tickets.get(interaction.channelId);
     if (!ticketData) return;
