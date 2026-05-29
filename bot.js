@@ -150,6 +150,62 @@ async function deleteAllSlashCommands(guild) {
 }
 
 // ============================================
+// CREATE TICKET CHANNEL DIRECTLY (NO POPUP)
+// ============================================
+async function createDirectTicket(user, interaction, productName, productPrice) {
+    const guild = interaction.guild;
+    const supportRole = guild.roles.cache.get(CONFIG.SUPPORT_ROLE_ID);
+    const categoryId = CONFIG.PURCHASE_CATEGORY_ID;
+    
+    const channel = await guild.channels.create({
+        name: `purchase-${user.username.toLowerCase()}`,
+        type: ChannelType.GuildText,
+        parent: categoryId,
+        permissionOverwrites: [
+            { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+            { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+            { id: supportRole.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+        ]
+    });
+    
+    tickets.set(channel.id, {
+        userId: user.id,
+        claimedBy: null,
+        createdAt: Date.now(),
+        ticketType: 'Purchase'
+    });
+    
+    const embed = new EmbedBuilder()
+        .setTitle(`🛒 Purchase Ticket`)
+        .setDescription(`Welcome ${user.toString()}! Your purchase ticket has been created.\n\n**Product:** ${productName}\n**Price:** ${productPrice}\n**Created:** <t:${Math.floor(Date.now() / 1000)}:F>\n\nA support member will assist you with your purchase shortly.`)
+        .setColor(0x00ff00)
+        .setThumbnail(guild.iconURL())
+        .addFields(
+            { name: '📌 Instructions', value: '• Click **Claim Ticket** to take ownership\n• Click **Close Ticket** to delete this ticket\n• Click **Get Transcript** to save the conversation', inline: false },
+            { name: '👤 User', value: user.toString(), inline: true },
+            { name: '🛒 Product', value: productName, inline: true },
+            { name: '💰 Price', value: productPrice, inline: true }
+        )
+        .setFooter({ text: `Purchase Ticket System`, iconURL: client.user.displayAvatarURL() })
+        .setTimestamp();
+    
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Primary).setEmoji('🎯'),
+            new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+            new ButtonBuilder().setCustomId('transcript').setLabel('Get Transcript').setStyle(ButtonStyle.Secondary).setEmoji('📄')
+        );
+    
+    await channel.send({
+        content: `${user.toString()} ${supportRole.toString()}`,
+        embeds: [embed],
+        components: [row]
+    });
+    
+    return channel;
+}
+
+// ============================================
 // TICKET HELPER FUNCTIONS
 // ============================================
 async function createTicketChannel(user, interaction, categoryId, ticketType) {
@@ -386,7 +442,7 @@ client.on('interactionCreate', async (interaction) => {
     }
     
     // ============================================
-    // /PRODUCT SLASH COMMAND - NO PRODUCT ID
+    // /PRODUCT SLASH COMMAND - NO AUTHOR NAME
     // ============================================
     if (interaction.commandName === 'product') {
         if (!interaction.member.roles.cache.has(CONFIG.PRODUCT_ROLE_ID)) {
@@ -402,6 +458,9 @@ client.on('interactionCreate', async (interaction) => {
         const description = interaction.options.getString('description') || 'No description provided';
         const imageUrl = interaction.options.getString('image');
         
+        // Store product info for the button handler
+        const productInfo = { name: productName, price: price };
+        
         // Check if in stock
         const inStock = instockRaw.toLowerCase() === 'yes';
         
@@ -409,7 +468,7 @@ client.on('interactionCreate', async (interaction) => {
         const stockStatus = inStock ? '✅ **IN STOCK**' : '❌ **OUT OF STOCK**';
         const stockColor = inStock ? 0x00ff00 : 0xff0000;
         
-        // Create clean product embed (NO product ID)
+        // Create clean product embed
         const productEmbed = new EmbedBuilder()
             .setTitle(`${productName}`)
             .setDescription(description)
@@ -427,11 +486,13 @@ client.on('interactionCreate', async (interaction) => {
             productEmbed.setImage(imageUrl);
         }
         
-        // Add action buttons - Buy Now opens ticket menu
+        productEmbed.setThumbnail('https://cdn-icons-png.flaticon.com/512/2331/2331970.png');
+        
+        // Add action buttons - Buy Now creates ticket directly
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId('buy_now_ticket')
+                    .setCustomId(`buy_now_${Date.now()}`)
                     .setLabel('Buy Now')
                     .setStyle(ButtonStyle.Success)
                     .setEmoji('🛒'),
@@ -442,7 +503,14 @@ client.on('interactionCreate', async (interaction) => {
                     .setEmoji('❓')
             );
         
-        // Send ONLY the product embed
+        // Store product info for the button
+        const customId = `buy_now_${Date.now()}`;
+        row.components[0].setCustomId(customId);
+        
+        // Store product data temporarily
+        if (!client.productData) client.productData = new Map();
+        client.productData.set(customId, { name: productName, price: price });
+        
         await interaction.reply({ embeds: [productEmbed], components: [row] });
         
         // Log to log channel only
@@ -464,41 +532,38 @@ client.on('interactionCreate', async (interaction) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
-    // BUY NOW button - opens ticket creation menu
-    if (interaction.customId === 'buy_now_ticket') {
-        // Create the ticket category selection menu
-        const embed = new EmbedBuilder()
-            .setTitle('🛒 Purchase Request')
-            .setDescription('Please select the category for your purchase:')
-            .setColor(0x00ff00)
-            .addFields(
-                { name: '📋 General Question', value: 'Questions about the product', inline: false },
-                { name: '💰 Purchase', value: 'Complete your purchase', inline: false },
-                { name: '🛡️ Buy Support', value: 'Get help with your purchase', inline: false }
-            )
-            .setFooter({ text: 'Click a button below to create a ticket' })
-            .setTimestamp();
+    // BUY NOW button - creates ticket DIRECTLY (no popup)
+    if (interaction.customId.startsWith('buy_now_')) {
+        // Get product info
+        const productData = client.productData?.get(interaction.customId);
+        const productName = productData?.name || 'Unknown Product';
+        const productPrice = productData?.price || 'Unknown Price';
         
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('general_ticket')
-                    .setLabel('General Question')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji('📋'),
-                new ButtonBuilder()
-                    .setCustomId('purchase_ticket')
-                    .setLabel('Purchase')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('💰'),
-                new ButtonBuilder()
-                    .setCustomId('buysupport_ticket')
-                    .setLabel('Buy Support')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('🛡️')
-            );
+        // Check if user already has open ticket
+        let existingTicket = null;
+        for (const [channelId, data] of tickets.entries()) {
+            if (data.userId === interaction.user.id) {
+                existingTicket = interaction.guild.channels.cache.get(channelId);
+                break;
+            }
+        }
         
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+        if (existingTicket) {
+            return interaction.reply({ 
+                content: `❌ You already have an open ticket: ${existingTicket.toString()}! Please close that one first.`, 
+                ephemeral: true 
+            });
+        }
+        
+        await interaction.reply({ content: `🛒 Creating your purchase ticket for **${productName}**...`, ephemeral: true });
+        
+        // Create ticket directly
+        const channel = await createDirectTicket(interaction.user, interaction, productName, productPrice);
+        
+        await interaction.editReply({ content: `✅ Purchase ticket created: ${channel.toString()}! A support member will assist you shortly.`, ephemeral: true });
+        
+        // Clean up stored product data
+        if (client.productData) client.productData.delete(interaction.customId);
     }
     
     // MORE INFO button
@@ -600,57 +665,15 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
-// TICKET BUTTON HANDLERS
+// TICKET BUTTON HANDLERS (Claim, Close, Transcript)
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
-    if (interaction.customId === 'create_ticket_menu') {
-        const embed = new EmbedBuilder()
-            .setTitle('🎫 Create a Support Ticket')
-            .setDescription('Please select the category that best fits your needs:')
-            .setColor(0x00ff00)
-            .addFields(
-                { name: '📋 General Question', value: 'General inquiries, questions, or feedback', inline: false },
-                { name: '💰 Purchase', value: 'Payment issues, transaction problems, or billing', inline: false },
-                { name: '🛡️ Buy Support', value: 'Premium support for paid services', inline: false }
-            )
-            .setFooter({ text: 'Choose carefully - this cannot be changed' })
-            .setTimestamp();
-        
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder().setCustomId('general_ticket').setLabel('General Question').setStyle(ButtonStyle.Primary).setEmoji('📋'),
-                new ButtonBuilder().setCustomId('purchase_ticket').setLabel('Purchase').setStyle(ButtonStyle.Success).setEmoji('💰'),
-                new ButtonBuilder().setCustomId('buysupport_ticket').setLabel('Buy Support').setStyle(ButtonStyle.Danger).setEmoji('🛡️')
-            );
-        
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-        return;
-    }
-    
-    let categoryId = null, ticketType = null;
-    if (interaction.customId === 'general_ticket') { categoryId = CONFIG.GENERAL_CATEGORY_ID; ticketType = 'General Question'; }
-    else if (interaction.customId === 'purchase_ticket') { categoryId = CONFIG.PURCHASE_CATEGORY_ID; ticketType = 'Purchase'; }
-    else if (interaction.customId === 'buysupport_ticket') { categoryId = CONFIG.BUY_SUPPORT_CATEGORY_ID; ticketType = 'Buy Support'; }
-    
-    if (categoryId && ticketType) {
-        for (const [channelId, data] of tickets.entries()) {
-            if (data.userId === interaction.user.id) {
-                const existing = interaction.guild.channels.cache.get(channelId);
-                if (existing) {
-                    return interaction.reply({ 
-                        content: `❌ You already have an open ticket: ${existing.toString()}! Please close that one first.`, 
-                        ephemeral: true 
-                    });
-                }
-            }
-        }
-        
-        await interaction.reply({ content: `🎫 Creating your ${ticketType} ticket...`, ephemeral: true });
-        const channel = await createTicketChannel(interaction.user, interaction, categoryId, ticketType);
-        await interaction.editReply({ content: `✅ ${ticketType} ticket created: ${channel.toString()}`, ephemeral: true });
-    }
+    // Skip product buttons
+    if (interaction.customId.startsWith('buy_now_') || interaction.customId === 'more_info') return;
+    if (interaction.customId === 'create_ticket_menu') return;
+    if (interaction.customId === 'general_ticket' || interaction.customId === 'purchase_ticket' || interaction.customId === 'buysupport_ticket') return;
     
     const ticketData = tickets.get(interaction.channelId);
     if (!ticketData) return;
@@ -724,6 +747,60 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ content: '📄 Generating transcript...', ephemeral: true });
         await sendTranscript(interaction.channel, interaction);
         await interaction.editReply({ content: '✅ Transcript has been sent to the transcript channel!', ephemeral: true });
+    }
+});
+
+// ============================================
+// REGULAR TICKET CREATION BUTTONS (from support channel)
+// ============================================
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+    
+    if (interaction.customId === 'create_ticket_menu') {
+        const embed = new EmbedBuilder()
+            .setTitle('🎫 Create a Support Ticket')
+            .setDescription('Please select the category that best fits your needs:')
+            .setColor(0x00ff00)
+            .addFields(
+                { name: '📋 General Question', value: 'General inquiries, questions, or feedback', inline: false },
+                { name: '💰 Purchase', value: 'Payment issues, transaction problems, or billing', inline: false },
+                { name: '🛡️ Buy Support', value: 'Premium support for paid services', inline: false }
+            )
+            .setFooter({ text: 'Choose carefully - this cannot be changed' })
+            .setTimestamp();
+        
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder().setCustomId('general_ticket').setLabel('General Question').setStyle(ButtonStyle.Primary).setEmoji('📋'),
+                new ButtonBuilder().setCustomId('purchase_ticket').setLabel('Purchase').setStyle(ButtonStyle.Success).setEmoji('💰'),
+                new ButtonBuilder().setCustomId('buysupport_ticket').setLabel('Buy Support').setStyle(ButtonStyle.Danger).setEmoji('🛡️')
+            );
+        
+        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+        return;
+    }
+    
+    let categoryId = null, ticketType = null;
+    if (interaction.customId === 'general_ticket') { categoryId = CONFIG.GENERAL_CATEGORY_ID; ticketType = 'General Question'; }
+    else if (interaction.customId === 'purchase_ticket') { categoryId = CONFIG.PURCHASE_CATEGORY_ID; ticketType = 'Purchase'; }
+    else if (interaction.customId === 'buysupport_ticket') { categoryId = CONFIG.BUY_SUPPORT_CATEGORY_ID; ticketType = 'Buy Support'; }
+    
+    if (categoryId && ticketType) {
+        for (const [channelId, data] of tickets.entries()) {
+            if (data.userId === interaction.user.id) {
+                const existing = interaction.guild.channels.cache.get(channelId);
+                if (existing) {
+                    return interaction.reply({ 
+                        content: `❌ You already have an open ticket: ${existing.toString()}! Please close that one first.`, 
+                        ephemeral: true 
+                    });
+                }
+            }
+        }
+        
+        await interaction.reply({ content: `🎫 Creating your ${ticketType} ticket...`, ephemeral: true });
+        const channel = await createTicketChannel(interaction.user, interaction, categoryId, ticketType);
+        await interaction.editReply({ content: `✅ ${ticketType} ticket created: ${channel.toString()}`, ephemeral: true });
     }
 });
 
