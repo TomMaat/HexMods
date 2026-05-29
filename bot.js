@@ -31,7 +31,6 @@ const CONFIG = {
     TICKET_CREATION_CHANNEL_ID: process.env.TICKET_CREATION_CHANNEL_ID,
     ROLE_CLAIM_CHANNEL_ID: process.env.ROLE_CLAIM_CHANNEL_ID,
     VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
-    PURCHASE_CHANNEL_ID: process.env.PURCHASE_CHANNEL_ID,
     
     TOKEN: process.env.TOKEN
 };
@@ -522,31 +521,13 @@ client.on('interactionCreate', async (interaction) => {
             createdAt: Date.now()
         });
         
-        // Send to purchase channel
-        const purchaseChannel = interaction.guild.channels.cache.get(CONFIG.PURCHASE_CHANNEL_ID);
-        if (purchaseChannel) {
-            const embed = new EmbedBuilder()
-                .setTitle(`🛍️ **${name}**`)
-                .setDescription(content)
-                .setColor(0x00ff00)
-                .setThumbnail(LOGO_URL)
-                .addFields(
-                    { name: '📅 Created', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
-                    { name: '🆔 Product ID', value: name.toLowerCase(), inline: true }
-                )
-                .setFooter({ text: `To purchase, use /purchase`, iconURL: client.user.displayAvatarURL() })
-                .setTimestamp();
-            
-            await purchaseChannel.send({ embeds: [embed] });
-        }
-        
-        await interaction.reply({ content: `✅ Purchase option **${name}** has been created!`, flags: 64 });
-        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        await interaction.reply({ content: `✅ Purchase option **${name}** has been created! Use /purchase to sell it.`, flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
         
         // Log to log channel
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
-            logChannel.send({ content: `📝 **/createpurchase** by ${interaction.user.tag}\n**Product:** ${name}` }).catch(() => {});
+            logChannel.send({ content: `📝 **/createpurchase** by ${interaction.user.tag}\n**Product:** ${name}\n**Content:** ${content.substring(0, 100)}...` }).catch(() => {});
         }
     }
     
@@ -568,7 +549,7 @@ client.on('interactionCreate', async (interaction) => {
         
         // Create dropdown menu of products
         const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId(`purchase_select_${buyer.id}`)
+            .setCustomId(`purchase_select_${buyer.id}_${interaction.channelId}`)
             .setPlaceholder('Select a product to purchase')
             .addOptions(
                 Array.from(purchases.values()).map(product => {
@@ -603,11 +584,21 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isStringSelectMenu()) return;
     if (!interaction.customId.startsWith('purchase_select_')) return;
     
-    const buyerId = interaction.customId.replace('purchase_select_', '');
+    const parts = interaction.customId.split('_');
+    const buyerId = parts[2];
+    const channelId = parts[3];
+    
     const buyer = await interaction.guild.members.fetch(buyerId).catch(() => null);
+    const targetChannel = interaction.guild.channels.cache.get(channelId);
     
     if (!buyer) {
         await interaction.reply({ content: '❌ Buyer not found!', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        return;
+    }
+    
+    if (!targetChannel) {
+        await interaction.reply({ content: '❌ Channel not found!', flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
         return;
     }
@@ -621,33 +612,29 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    // Send to purchase channel
-    const purchaseChannel = interaction.guild.channels.cache.get(CONFIG.PURCHASE_CHANNEL_ID);
-    if (purchaseChannel) {
-        const embed = new EmbedBuilder()
-            .setTitle(`🛍️ **${purchase.name}**`)
-            .setDescription(purchase.content)
-            .setColor(0x00ff00)
-            .setThumbnail(LOGO_URL)
-            .addFields(
-                { name: '👤 Purchased by', value: buyer.user.tag, inline: true },
-                { name: '🛒 Product', value: purchase.name, inline: true },
-                { name: '📅 Purchased at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
-                { name: '📦 How to claim', value: `The buyer can claim their product in their ticket channel.`, inline: false }
-            )
-            .setFooter({ text: 'Purchase completed by ' + interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
-            .setTimestamp();
-        
-        await purchaseChannel.send({ embeds: [embed] });
-    }
+    // Send the product embed directly to the channel where the command was used
+    const productEmbed = new EmbedBuilder()
+        .setTitle(`🛍️ **${purchase.name}**`)
+        .setDescription(purchase.content)
+        .setColor(0x00ff00)
+        .setThumbnail(LOGO_URL)
+        .addFields(
+            { name: '👤 Purchased by', value: buyer.user.tag, inline: true },
+            { name: '🛒 Product', value: purchase.name, inline: true },
+            { name: '📅 Purchased at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+        )
+        .setFooter({ text: `Purchase completed by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+        .setTimestamp();
     
-    await interaction.reply({ content: `✅ **${purchase.name}** has been purchased for ${buyer.user.tag}! They can claim it in their ticket channel.`, flags: 64 });
+    await targetChannel.send({ embeds: [productEmbed] });
+    
+    await interaction.reply({ content: `✅ **${purchase.name}** has been sent to ${targetChannel}!`, flags: 64 });
     setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
     
     // Log to log channel
     const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
     if (logChannel) {
-        logChannel.send({ content: `📝 **Purchase** by ${interaction.user.tag} for ${buyer.user.tag}\n**Product:** ${purchase.name}` }).catch(() => {});
+        logChannel.send({ content: `📝 **Purchase** by ${interaction.user.tag} for ${buyer.user.tag}\n**Product:** ${purchase.name}\n**Channel:** ${targetChannel.name}` }).catch(() => {});
     }
 });
 
