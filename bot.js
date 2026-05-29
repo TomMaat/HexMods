@@ -11,7 +11,7 @@ const CONFIG = {
     
     SUPPORT_ROLE_ID: process.env.SUPPORT_ROLE_ID || '1509664538281381908',
     SEND_ROLE_ID: process.env.SEND_ROLE_ID,
-    PRODUCT_ROLE_ID: process.env.PRODUCT_ROLE_ID, // Role for /product command
+    PRODUCT_ROLE_ID: process.env.PRODUCT_ROLE_ID,
     TRANSCRIPT_CHANNEL_ID: process.env.TRANSCRIPT_CHANNEL_ID,
     LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
     
@@ -386,7 +386,7 @@ client.on('interactionCreate', async (interaction) => {
     }
     
     // ============================================
-    // /PRODUCT SLASH COMMAND
+    // /PRODUCT SLASH COMMAND - BIGGER EMBED, NO USER MESSAGE
     // ============================================
     if (interaction.commandName === 'product') {
         if (!interaction.member.roles.cache.has(CONFIG.PRODUCT_ROLE_ID)) {
@@ -409,30 +409,50 @@ client.on('interactionCreate', async (interaction) => {
         const stockStatus = inStock ? '✅ **IN STOCK**' : '❌ **OUT OF STOCK**';
         const stockColor = inStock ? 0x00ff00 : 0xff0000;
         
-        // Create the product embed
+        // Create a BIGGER, more detailed product embed
         const productEmbed = new EmbedBuilder()
             .setTitle(`🛒 ${productName}`)
-            .setDescription(description || 'No description provided.')
+            .setDescription(description || '✨ No description provided for this product.')
             .setColor(stockColor)
             .addFields(
-                { name: '💰 Price', value: price, inline: true },
-                { name: '📦 Stock Status', value: stockStatus, inline: true }
+                { name: '💰 **Price**', value: `\`\`\`${price}\`\`\``, inline: true },
+                { name: '📦 **Stock Status**', value: `\`\`\`${stockStatus}\`\`\``, inline: true },
+                { name: '🆔 **Product ID**', value: `\`\`\`${Math.random().toString(36).substring(2, 10).toUpperCase()}\`\`\``, inline: false },
+                { name: '📅 **Listed On**', value: `\`\`\`${new Date().toLocaleDateString()}\`\`\``, inline: true },
+                { name: '🔗 **Quick Actions**', value: `• Click ✅ to purchase\n• Click ❓ for more info`, inline: true }
             )
-            .setFooter({ text: `Requested by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+            .setFooter({ text: 'Product Information', iconURL: interaction.guild.iconURL() })
             .setTimestamp();
         
-        // Add image if provided
+        // Add product image if provided
         if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
             productEmbed.setImage(imageUrl);
+        } else {
+            productEmbed.setImage('https://cdn-icons-png.flaticon.com/512/2331/2331970.png');
         }
         
-        // Add thumbnail (product emoji)
+        // Add thumbnail
         productEmbed.setThumbnail('https://cdn-icons-png.flaticon.com/512/2331/2331970.png');
         
-        await interaction.reply({ embeds: [productEmbed] });
+        // Add action buttons
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('buy_product')
+                    .setLabel('Buy Now')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('✅'),
+                new ButtonBuilder()
+                    .setCustomId('info_product')
+                    .setLabel('More Info')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('❓')
+            );
         
-        console.log(`✅ Sent /product in #${interaction.channel.name} by ${interaction.user.tag}: ${productName} - ${instockRaw} - ${price}`);
+        await interaction.reply({ embeds: [productEmbed], components: [row] });
         
+        // NO "user has used product" message - removed!
+        // Only log to log channel (invisible to users)
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
@@ -442,6 +462,33 @@ client.on('interactionCreate', async (interaction) => {
                 .setTimestamp();
             await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
         }
+    }
+});
+
+// ============================================
+// PRODUCT BUTTON HANDLERS
+// ============================================
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+    
+    if (interaction.customId === 'buy_product') {
+        const embed = new EmbedBuilder()
+            .setTitle('✅ Purchase Requested')
+            .setDescription(`Thank you for your interest! Please create a ticket using the ticket system to complete your purchase.`)
+            .setColor(0x00ff00)
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    
+    if (interaction.customId === 'info_product') {
+        const embed = new EmbedBuilder()
+            .setTitle('❓ Product Information')
+            .setDescription(`For more information about this product, please create a support ticket and our team will assist you.`)
+            .setColor(0x0099ff)
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 });
 
