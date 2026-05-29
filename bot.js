@@ -43,10 +43,9 @@ app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 
 const tickets = new Map();
 const joinedMembers = new Set();
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ============================================
-// UPDATE MEMBER COUNT IN STATUS - "Members" met hoofdletter M
+// UPDATE MEMBER COUNT IN STATUS
 // ============================================
 async function updateMemberCount(guild) {
     try {
@@ -56,7 +55,7 @@ async function updateMemberCount(guild) {
         const memberCount = humanMembers.size;
         
         client.user.setPresence({
-            activities: [{ name: `${memberCount} Members`, type: 3 }], // "Members" met hoofdletter M
+            activities: [{ name: `${memberCount} Members`, type: 3 }],
             status: 'online'
         });
         
@@ -306,7 +305,7 @@ client.once('ready', async () => {
 });
 
 // ============================================
-// /SEND SLASH COMMAND - GEEN LOG MESSAGE
+// /SEND SLASH COMMAND - GEEN ENKELE MELDING (NO MESSAGE AT ALL)
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
@@ -328,12 +327,15 @@ client.on('interactionCreate', async (interaction) => {
             });
         }
         
-        await interaction.deferReply({ ephemeral: true });
+        // Send the message first
         await interaction.channel.send(messageContent);
-        await interaction.editReply({ content: '✅ Message sent successfully!', ephemeral: true });
         
-        // NO LOG MESSAGE HERE - verwijderd
+        // Acknowledge the command WITHOUT any visible message (empty reply)
+        // This removes the "thinking" state without showing anything
+        await interaction.deferReply({ ephemeral: true });
+        await interaction.deleteReply();
         
+        // Log to log channel (only in logs, not visible to users)
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             const logEmbed = new EmbedBuilder()
