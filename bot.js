@@ -45,14 +45,18 @@ const joinedMembers = new Set();
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ============================================
-// UPDATE MEMBER COUNT IN STATUS
+// UPDATE MEMBER COUNT IN STATUS - FIXED
 // ============================================
 async function updateMemberCount(guild) {
     try {
         await guild.members.fetch();
-        const memberCount = guild.members.cache.filter(member => !member.user.bot).size;
-        client.user.setActivity(`${memberCount} Members`, { type: 'WATCHING' });
-        console.log(`✅ Status updated: Watching ${memberCount} Members`);
+        const humanMembers = guild.members.cache.filter(member => !member.user.bot);
+        const memberCount = humanMembers.size;
+        
+        // Use WATCHING status with member count
+        client.user.setActivity(`${memberCount} members`, { type: 'WATCHING' });
+        console.log(`✅ Status updated: Watching ${memberCount} human members`);
+        
         return memberCount;
     } catch (error) {
         console.log(`❌ Could not update member count: ${error.message}`);
@@ -191,7 +195,7 @@ async function sendVerificationMessage(guild) {
         .addFields(
             { name: '📋 Why verify?', value: 'Verification helps us keep the server safe from bots and spam.', inline: false },
             { name: '🔓 What happens after?', value: 'You will get access to all channels and can participate in discussions.', inline: false },
-            { name: '⚠️ Important', value: 'You have 10 minutes to verify before being kicked.', inline: true }
+            { name: '⚠️ Important', value: 'You have 24 hours to verify before being kicked.', inline: true }
         )
         .setThumbnail(guild.iconURL())
         .setFooter({ text: 'Click the button below to verify', iconURL: client.user.displayAvatarURL() })
@@ -218,16 +222,13 @@ client.once('ready', async () => {
     
     const guild = client.guilds.cache.first();
     if (guild) {
-        // Update member count on startup
         await updateMemberCount(guild);
         
-        // Update member count every 5 minutes
         setInterval(async () => {
             await updateMemberCount(guild);
         }, 300000);
     }
     
-    // Keep-alive ping for Render
     setInterval(() => {
         console.log('🔄 Keep-alive ping');
     }, 300000);
@@ -237,7 +238,6 @@ client.once('ready', async () => {
     await deleteAllSlashCommands(guild);
     await sendVerificationMessage(guild);
     
-    // Setup ticket channel
     const ticketChannel = client.channels.cache.get(CONFIG.TICKET_CREATION_CHANNEL_ID);
     if (ticketChannel) {
         const messages = await ticketChannel.messages.fetch();
@@ -274,10 +274,9 @@ client.once('ready', async () => {
 });
 
 // ============================================
-// WELCOME DM FOR NEW MEMBERS + UPDATE COUNT
+// WELCOME DM FOR NEW MEMBERS
 // ============================================
 client.on('guildMemberAdd', async (member) => {
-    // Update member count in status
     await updateMemberCount(member.guild);
     
     if (joinedMembers.has(member.id)) return;
@@ -293,7 +292,7 @@ client.on('guildMemberAdd', async (member) => {
             .addFields(
                 { name: '📌 Need Help?', value: 'Use the **Ticket System** to create a support ticket.', inline: true },
                 { name: '✅ Verify', value: 'Go to the verification channel and click the button!', inline: true },
-                { name: '⏱️ Time Limit', value: 'You have 10 minutes to verify before being kicked.', inline: true }
+                { name: '⏱️ Time Limit', value: 'You have 24 hours to verify before being kicked.', inline: true }
             )
             .setThumbnail(member.guild.iconURL())
             .setFooter({ text: 'Please verify to access the server', iconURL: client.user.displayAvatarURL() })
@@ -303,16 +302,15 @@ client.on('guildMemberAdd', async (member) => {
         joinedMembers.add(member.id);
         console.log(`📨 Sent welcome DM to ${member.user.tag}`);
         
-        // Auto-kick after 10 minutes
+        // Auto-kick after 24 hours (86400000 ms)
         setTimeout(async () => {
             const freshMember = await member.guild.members.fetch(member.id).catch(() => null);
             if (freshMember && !freshMember.roles.cache.has(CONFIG.VERIFIED_ROLE_ID)) {
-                await freshMember.kick('Did not verify within 10 minutes').catch(() => {});
-                console.log(`⏰ Kicked ${member.user.tag} for not verifying`);
-                // Update count after kick
+                await freshMember.kick('Did not verify within 24 hours').catch(() => {});
+                console.log(`⏰ Kicked ${member.user.tag} for not verifying within 24 hours`);
                 await updateMemberCount(member.guild);
             }
-        }, 10 * 60 * 1000);
+        }, 24 * 60 * 60 * 1000); // 24 hours
         
     } catch (error) {
         console.log(`Couldn't send welcome DM to ${member.user.tag}: ${error.message}`);
@@ -363,7 +361,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
-// /SEND COMMAND - PLAIN TEXT MESSAGE
+// /SEND COMMAND - FIXED (NO DELAY, NO DISAPPEARING)
 // ============================================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
@@ -395,9 +393,10 @@ client.on('messageCreate', async (message) => {
             return;
         }
         
-        await message.channel.sendTyping();
-        await delay(500);
+        // Delete the command message immediately
         await message.delete().catch(() => {});
+        
+        // Send the message as the bot (plain text)
         await message.channel.send(msgContent);
         
         console.log(`✅ Sent /send in #${message.channel.name} by ${message.author.tag}: ${msgContent.substring(0, 50)}`);
@@ -420,7 +419,6 @@ client.on('messageCreate', async (message) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
-    // Create ticket menu
     if (interaction.customId === 'create_ticket_menu') {
         const embed = new EmbedBuilder()
             .setTitle('🎫 Create a Support Ticket')
@@ -445,7 +443,6 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    // Ticket creation
     let categoryId = null, ticketType = null;
     if (interaction.customId === 'general_ticket') { categoryId = CONFIG.GENERAL_CATEGORY_ID; ticketType = 'General Question'; }
     else if (interaction.customId === 'purchase_ticket') { categoryId = CONFIG.PURCHASE_CATEGORY_ID; ticketType = 'Purchase'; }
