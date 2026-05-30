@@ -10,10 +10,8 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// Database tabellen aanmaken
 async function initDatabase() {
     try {
-        // Storage tabel
         await pool.query(`
             CREATE TABLE IF NOT EXISTS storage (
                 id SERIAL PRIMARY KEY,
@@ -24,8 +22,6 @@ async function initDatabase() {
                 added_at BIGINT NOT NULL
             )
         `);
-        
-        // Purchases tabel
         await pool.query(`
             CREATE TABLE IF NOT EXISTS purchases (
                 id SERIAL PRIMARY KEY,
@@ -39,7 +35,6 @@ async function initDatabase() {
                 file_name TEXT
             )
         `);
-        
         console.log('✅ Database tabellen zijn klaar!');
     } catch (error) {
         console.log('❌ Database error:', error.message);
@@ -47,7 +42,7 @@ async function initDatabase() {
 }
 
 // ============================================
-// CONFIG
+// CONFIG - ENVIRONMENT VARIABLES
 // ============================================
 const CONFIG = {
     GENERAL_CATEGORY_ID: process.env.GENERAL_CATEGORY_ID,
@@ -78,6 +73,7 @@ const CONFIG = {
     TICKET_CREATION_CHANNEL_ID: process.env.TICKET_CREATION_CHANNEL_ID,
     ROLE_CLAIM_CHANNEL_ID: process.env.ROLE_CLAIM_CHANNEL_ID,
     VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
+    ROLE_INFO_CHANNEL_ID: process.env.ROLE_INFO_CHANNEL_ID,
     
     STORAGE_DISCORD_CHANNEL_ID: process.env.STORAGE_DISCORD_CHANNEL_ID,
     STORAGE_STEAM_CHANNEL_ID: process.env.STORAGE_STEAM_CHANNEL_ID,
@@ -106,6 +102,8 @@ app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 
 const tickets = new Map();
 const joinedMembers = new Set();
+const LOGO_URL = 'https://cdn.discordapp.com/attachments/1509665549410635787/1509928894361370735/hexmods.png';
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ============================================
 // DATABASE FUNCTIES - STORAGE
@@ -163,9 +161,7 @@ async function giveBundle() {
     const steamAccounts = await getRandomAccounts('steam', 1);
     const fivemAccounts = await getRandomAccounts('fivem', 1);
     
-    if (discordAccounts.length === 0 || steamAccounts.length === 0 || fivemAccounts.length === 0) {
-        return null;
-    }
+    if (discordAccounts.length === 0 || steamAccounts.length === 0 || fivemAccounts.length === 0) return null;
     
     await removeAccounts('discord', [discordAccounts[0].account_id]);
     await removeAccounts('steam', [steamAccounts[0].account_id]);
@@ -181,10 +177,8 @@ async function giveBundle() {
 async function removeRandomAccounts(type, amount) {
     const accounts = await getRandomAccounts(type, amount);
     if (accounts.length === 0) return [];
-    
     const accountIds = accounts.map(a => a.account_id);
     await removeAccounts(type, accountIds);
-    
     return accounts.map(a => ({
         id: a.account_id,
         content: a.content,
@@ -233,9 +227,6 @@ async function getAllPurchasesFromDB() {
 // ============================================
 // UPDATE STORAGE DISPLAYS
 // ============================================
-const LOGO_URL = 'https://cdn.discordapp.com/attachments/1509665549410635787/1509928894361370735/hexmods.png';
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
 async function updateStorageDisplayForType(type) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
@@ -263,7 +254,6 @@ async function updateStorageDisplayForType(type) {
     const storageChannel = guild.channels.cache.get(channelId);
     if (!storageChannel) return;
     
-    // Verwijder oude berichten
     try {
         const messages = await storageChannel.messages.fetch();
         if (messages.size > 0) await storageChannel.bulkDelete(messages);
@@ -271,7 +261,6 @@ async function updateStorageDisplayForType(type) {
     
     const count = await getAccountCount(type);
     const accounts = await getAllAccountsByType(type);
-    
     const accountList = accounts.map(a => `\`${a.account_id}\` - ${a.content.substring(0, 80)}...`).join('\n') || '`Geen accounts beschikbaar`';
     
     const embed = new EmbedBuilder()
@@ -310,70 +299,6 @@ async function updateMemberCount(guild) {
     } catch (error) {
         return 0;
     }
-}
-
-// ============================================
-// REGISTER SLASH COMMANDS
-// ============================================
-async function registerCommands(guild) {
-    const commands = [
-        { name: 'send', description: 'Send a message as the bot (opens a modal)', options: [] },
-        {
-            name: 'product',
-            description: 'Create a product embed',
-            options: [
-                { name: 'name', description: 'Product name', type: 3, required: true },
-                { name: 'instock', description: 'In stock?', type: 3, required: true, choices: [{ name: 'Yes ✅', value: 'yes' }, { name: 'No ❌', value: 'no' }] },
-                { name: 'price', description: 'Product price', type: 3, required: true },
-                { name: 'description', description: 'Product description', type: 3, required: false },
-                { name: 'image', description: 'Image URL', type: 3, required: false }
-            ]
-        },
-        { name: 'clear', description: 'Clear messages', options: [{ name: 'amount', description: 'Number to clear (1-100)', type: 4, required: true }] },
-        {
-            name: 'review',
-            description: 'Leave a review',
-            options: [
-                { name: 'stars', description: 'Stars (1-5)', type: 4, required: true, choices: [{ name: '⭐ 1 star', value: 1 }, { name: '⭐⭐ 2 stars', value: 2 }, { name: '⭐⭐⭐ 3 stars', value: 3 }, { name: '⭐⭐⭐⭐ 4 stars', value: 4 }, { name: '⭐⭐⭐⭐⭐ 5 stars', value: 5 }] },
-                { name: 'product', description: 'Product name', type: 3, required: true },
-                { name: 'review', description: 'Your review', type: 3, required: true }
-            ]
-        },
-        {
-            name: 'createpurchase',
-            description: 'Create a purchase option (admin only)',
-            options: [
-                { name: 'name', description: 'Product name', type: 3, required: true },
-                { name: 'content', description: 'The text message to send', type: 3, required: false },
-                { name: 'file', description: 'File to attach', type: 11, required: false }
-            ]
-        },
-        { name: 'purchase', description: 'Purchase a product for a user (admin only)', options: [{ name: 'user', description: 'The user who bought the product', type: 6, required: true }] },
-        { name: 'verifyall', description: 'Verify ALL members', options: [] },
-        {
-            name: 'addaccount',
-            description: 'Add an account to storage (admin only)',
-            options: [
-                { name: 'type', description: 'Account type', type: 3, required: true, choices: [{ name: 'Discord', value: 'discord' }, { name: 'Steam', value: 'steam' }, { name: 'FiveM', value: 'fivem' }] },
-                { name: 'account', description: 'The account login details', type: 3, required: true }
-            ]
-        },
-        { name: 'giveaccount', description: 'Give random account(s) to a user', options: [{ name: 'user', description: 'The user to give the account(s) to', type: 6, required: true }] },
-        { name: 'givebundle', description: 'Give a bundle (1 Discord, 1 Steam, 1 FiveM account)', options: [{ name: 'user', description: 'The user to give the bundle to', type: 6, required: true }] }
-    ];
-    await guild.commands.set(commands);
-    console.log('✅ Commands registered!');
-}
-
-async function deleteOldCommands(guild) {
-    try {
-        const commands = await guild.commands.fetch();
-        for (const command of commands.values()) {
-            if (!['send', 'product', 'clear', 'review', 'createpurchase', 'purchase', 'verifyall', 'addaccount', 'giveaccount', 'givebundle'].includes(command.name)) {
-                await guild.commands.delete(command.id);
-            }
-        }
-    } catch (error) {}
 }
 
 // ============================================
@@ -442,6 +367,62 @@ async function sendRoleClaimMessage(guild) {
     );
     
     await channel.send({ embeds: [embed], components: [row1, row2, row3] });
+}
+
+// ============================================
+// COMMAND INFO EMBED - ALLE COMMANDS IN ENGELS
+// ============================================
+async function sendCommandInfoMessage(guild) {
+    const channel = guild.channels.cache.get(CONFIG.ROLE_INFO_CHANNEL_ID);
+    if (!channel) {
+        console.log('❌ Command info channel not configured!');
+        return;
+    }
+    
+    await channel.bulkDelete(await channel.messages.fetch()).catch(() => {});
+    
+    const embed = new EmbedBuilder()
+        .setTitle('📜 **COMMAND INFORMATION**')
+        .setDescription('Here is an overview of all available commands and what they do.')
+        .setColor(0x5865F2)
+        .setThumbnail(LOGO_URL)
+        .addFields(
+            { name: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', value: '⬇️ **TICKET COMMANDS** ⬇️', inline: false },
+            { name: '🎫 **Create Ticket**', value: 'Click the button in the support channel to create a ticket.\nChoose from: General Question, Purchase, or Buy Support.', inline: false },
+            { name: '🎯 **Claim Ticket**', value: 'Support staff can claim tickets using the **Claim Ticket** button in the ticket channel.', inline: false },
+            { name: '🔒 **Close Ticket**', value: 'Close a ticket using the **Close Ticket** button. A transcript will be saved.', inline: false },
+            { name: '📄 **Get Transcript**', value: 'Get a transcript of the ticket conversation using the **Get Transcript** button.', inline: false },
+            
+            { name: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', value: '⬇️ **ADMIN COMMANDS** ⬇️', inline: false },
+            { name: '📝 `/send`', value: 'Open a modal to send a message as the bot. Supports multi-line messages with Shift+Enter.', inline: false },
+            { name: '🛒 `/product`', value: 'Create a product embed with name, stock status (yes/no), price, description, and image.', inline: false },
+            { name: '🗑️ `/clear`', value: 'Clear messages from a channel. Usage: `/clear <amount>` (1-100 messages).', inline: false },
+            { name: '⭐ `/review`', value: 'Leave a review for a product. Usage: `/review <stars> <product> <review>`', inline: false },
+            { name: '📦 `/createpurchase`', value: 'Create a digital product for sale. Add text content or attach a file.', inline: false },
+            { name: '🎁 `/purchase`', value: 'Purchase a product for a user. Select the product from a dropdown menu.', inline: false },
+            { name: '✅ `/verifyall`', value: 'Verify ALL members in the server. Adds the verified role and removes unverified role.', inline: false },
+            
+            { name: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', value: '⬇️ **ACCOUNT STORAGE COMMANDS** ⬇️', inline: false },
+            { name: '➕ `/addaccount`', value: 'Add an account to storage. Usage: `/addaccount type:<discord/steam/fivem> account:<details>`', inline: false },
+            { name: '🎁 `/giveaccount`', value: 'Give random account(s) to a user. First choose category, then enter amount.', inline: false },
+            { name: '🎁 `/givebundle`', value: 'Give a bundle (1 Discord + 1 Steam + 1 FiveM account) to a user.', inline: false },
+            { name: '🔄 **Refresh**', value: 'Click the **Refresh** button in any storage channel to update the display.', inline: false },
+            { name: '📋 **Export**', value: 'Click the **Export** button in any storage channel to download all accounts as a text file.', inline: false },
+            
+            { name: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', value: '⬇️ **ROLE CLAIM** ⬇️', inline: false },
+            { name: '🎭 **Claim Roles**', value: `Go to <#${CONFIG.ROLE_CLAIM_CHANNEL_ID}> and click the buttons to claim or remove roles.`, inline: false },
+            { name: '📋 **Available Roles**', value: '• 🎭 Spoof Accounts\n• 🛒 Trigger Shop\n• 📜 Scripts\n• 💻 Cheats/Software\n• 🔄 IRL-Trading', inline: false },
+            { name: '✅ **Claim All**', value: 'Click the **Claim All Roles** button to get all available roles at once.', inline: false },
+            { name: '❌ **Remove All**', value: 'Click the **Remove All Roles** button to remove all claimed roles.', inline: false },
+            
+            { name: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', value: '⬇️ **VERIFICATION** ⬇️', inline: false },
+            { name: '✅ **Verify Yourself**', value: `Go to <#${CONFIG.VERIFICATION_CHANNEL_ID}> and click the **"Verify Me"** button to get access to all channels.`, inline: false }
+        )
+        .setFooter({ text: 'Use these commands to manage the server efficiently' })
+        .setTimestamp();
+    
+    await channel.send({ embeds: [embed] });
+    console.log('✅ Command info embed sent!');
 }
 
 // ============================================
@@ -582,15 +563,11 @@ async function sendTranscript(channel, interaction) {
 async function verifyAllMembers(interaction) {
     const verifiedRole = interaction.guild.roles.cache.get(CONFIG.VERIFIED_ROLE_ID);
     const unverifiedRole = interaction.guild.roles.cache.get(CONFIG.UNVERIFIED_ROLE_ID);
-    
     if (!verifiedRole) return interaction.reply({ content: '❌ Verified role not configured!', flags: 64 });
     
     await interaction.reply({ content: '🔄 **Verifying all members...** This may take a while.', flags: 64 });
     
-    let verifiedCount = 0;
-    let alreadyVerifiedCount = 0;
-    let failedCount = 0;
-    
+    let verifiedCount = 0, alreadyVerifiedCount = 0, failedCount = 0;
     await interaction.guild.members.fetch();
     const members = interaction.guild.members.cache.filter(member => !member.user.bot);
     
@@ -606,9 +583,7 @@ async function verifyAllMembers(interaction) {
                 await member.roles.remove(unverifiedRole);
             }
             await delay(500);
-        } catch (error) {
-            failedCount++;
-        }
+        } catch (error) { failedCount++; }
     }
     
     const resultEmbed = new EmbedBuilder()
@@ -628,11 +603,74 @@ async function verifyAllMembers(interaction) {
 }
 
 // ============================================
+// REGISTER SLASH COMMANDS
+// ============================================
+async function registerCommands(guild) {
+    const commands = [
+        { name: 'send', description: 'Send a message as the bot (opens a modal)', options: [] },
+        {
+            name: 'product',
+            description: 'Create a product embed',
+            options: [
+                { name: 'name', description: 'Product name', type: 3, required: true },
+                { name: 'instock', description: 'In stock?', type: 3, required: true, choices: [{ name: 'Yes ✅', value: 'yes' }, { name: 'No ❌', value: 'no' }] },
+                { name: 'price', description: 'Product price', type: 3, required: true },
+                { name: 'description', description: 'Product description', type: 3, required: false },
+                { name: 'image', description: 'Image URL', type: 3, required: false }
+            ]
+        },
+        { name: 'clear', description: 'Clear messages', options: [{ name: 'amount', description: 'Number to clear (1-100)', type: 4, required: true }] },
+        {
+            name: 'review',
+            description: 'Leave a review',
+            options: [
+                { name: 'stars', description: 'Stars (1-5)', type: 4, required: true, choices: [{ name: '⭐ 1 star', value: 1 }, { name: '⭐⭐ 2 stars', value: 2 }, { name: '⭐⭐⭐ 3 stars', value: 3 }, { name: '⭐⭐⭐⭐ 4 stars', value: 4 }, { name: '⭐⭐⭐⭐⭐ 5 stars', value: 5 }] },
+                { name: 'product', description: 'Product name', type: 3, required: true },
+                { name: 'review', description: 'Your review', type: 3, required: true }
+            ]
+        },
+        {
+            name: 'createpurchase',
+            description: 'Create a purchase option (admin only)',
+            options: [
+                { name: 'name', description: 'Product name', type: 3, required: true },
+                { name: 'content', description: 'The text message to send', type: 3, required: false },
+                { name: 'file', description: 'File to attach', type: 11, required: false }
+            ]
+        },
+        { name: 'purchase', description: 'Purchase a product for a user (admin only)', options: [{ name: 'user', description: 'The user who bought the product', type: 6, required: true }] },
+        { name: 'verifyall', description: 'Verify ALL members', options: [] },
+        {
+            name: 'addaccount',
+            description: 'Add an account to storage (admin only)',
+            options: [
+                { name: 'type', description: 'Account type', type: 3, required: true, choices: [{ name: 'Discord', value: 'discord' }, { name: 'Steam', value: 'steam' }, { name: 'FiveM', value: 'fivem' }] },
+                { name: 'account', description: 'The account login details', type: 3, required: true }
+            ]
+        },
+        { name: 'giveaccount', description: 'Give random account(s) to a user', options: [{ name: 'user', description: 'The user to give the account(s) to', type: 6, required: true }] },
+        { name: 'givebundle', description: 'Give a bundle (1 Discord, 1 Steam, 1 FiveM account)', options: [{ name: 'user', description: 'The user to give the bundle to', type: 6, required: true }] }
+    ];
+    await guild.commands.set(commands);
+    console.log('✅ Commands registered!');
+}
+
+async function deleteOldCommands(guild) {
+    try {
+        const commands = await guild.commands.fetch();
+        for (const command of commands.values()) {
+            if (!['send', 'product', 'clear', 'review', 'createpurchase', 'purchase', 'verifyall', 'addaccount', 'giveaccount', 'givebundle'].includes(command.name)) {
+                await guild.commands.delete(command.id);
+            }
+        }
+    } catch (error) {}
+}
+
+// ============================================
 // READY EVENT
 // ============================================
 client.once('ready', async () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
-    
     await initDatabase();
     
     const guild = client.guilds.cache.first();
@@ -644,11 +682,10 @@ client.once('ready', async () => {
         await sendVerificationMessage(guild);
         await sendRoleClaimMessage(guild);
         await sendTicketMessage(guild);
+        await sendCommandInfoMessage(guild);
         await updateAllStorageDisplays();
         
-        setInterval(async () => {
-            await updateAllStorageDisplays();
-        }, 30000);
+        setInterval(async () => { await updateAllStorageDisplays(); }, 30000);
     }
     console.log('✅ Bot is fully ready!');
     const stats = await getStorageStats();
@@ -798,7 +835,6 @@ client.on('interactionCreate', async (interaction) => {
         }
         
         await addPurchaseToDB(name.toLowerCase(), name, finalContent, interaction.user.tag, Date.now(), !!attachmentUrl, attachmentUrl, attachmentName);
-        
         await interaction.reply({ content: `✅ Purchase option **${name}** has been created!`, flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
     }
@@ -963,7 +999,6 @@ client.on('interactionCreate', async (interaction) => {
     
     const targetUser = await interaction.guild.members.fetch(userId).catch(() => null);
     const targetChannel = interaction.guild.channels.cache.get(channelId);
-    
     if (!targetUser || !targetChannel) return interaction.reply({ content: '❌ User or channel not found!', flags: 64 });
     
     const maxAmount = await getAccountCount(category);
@@ -1004,15 +1039,14 @@ client.on('interactionCreate', async (interaction) => {
     
     const targetUser = await interaction.guild.members.fetch(userId).catch(() => null);
     const targetChannel = interaction.guild.channels.cache.get(channelId);
-    
     if (!targetUser || !targetChannel) return interaction.reply({ content: '❌ User or channel not found!', flags: 64 });
     if (isNaN(amount) || amount < 1 || amount > maxAmount) return interaction.reply({ content: `❌ Invalid amount! (1-${maxAmount})`, flags: 64 });
     
     const removedAccounts = await removeRandomAccounts(category, amount);
     if (removedAccounts.length === 0) return interaction.reply({ content: '❌ Failed to give accounts.', flags: 64 });
     
-    let typeEmoji = category === 'steam' ? '🎮' : (category === 'fivem' ? '🚗' : '💬');
-    let accountsText = removedAccounts.map((a, i) => `**${i + 1}.** ${a.content}`).join('\n\n');
+    const typeEmoji = category === 'steam' ? '🎮' : (category === 'fivem' ? '🚗' : '💬');
+    const accountsText = removedAccounts.map((a, i) => `**${i + 1}.** ${a.content}`).join('\n\n');
     
     const accountEmbed = new EmbedBuilder()
         .setTitle(`${typeEmoji} **${removedAccounts.length} ${category.toUpperCase()} Account(s) Given**`)
@@ -1062,13 +1096,11 @@ client.on('interactionCreate', async (interaction) => {
     
     const buyer = await interaction.guild.members.fetch(buyerId).catch(() => null);
     const targetChannel = interaction.guild.channels.cache.get(channelId);
-    
     if (!buyer || !targetChannel) return interaction.reply({ content: '❌ Buyer or channel not found!', flags: 64 });
     
     const productName = interaction.values[0];
     const purchases = await getAllPurchasesFromDB();
     const purchase = purchases.get(productName);
-    
     if (!purchase) return interaction.reply({ content: '❌ Product not found!', flags: 64 });
     
     const productEmbed = new EmbedBuilder()
@@ -1183,7 +1215,6 @@ client.on('interactionCreate', async (interaction) => {
                 break;
             }
         }
-        
         if (hasTicket) return interaction.reply({ content: `❌ You already have an open ticket!`, flags: 64 });
         
         await interaction.reply({ content: `🛒 Creating ticket for ${name}...`, flags: 64 });
@@ -1265,7 +1296,6 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'claim_ticket') {
         if (!interaction.member.roles.cache.has(CONFIG.SUPPORT_ROLE_ID)) return interaction.reply({ content: '❌ No permission!', flags: 64 });
         if (ticket.claimedBy) return interaction.reply({ content: '❌ Already claimed!', flags: 64 });
-        
         ticket.claimedBy = interaction.user.id;
         tickets.set(interaction.channelId, ticket);
         await interaction.reply({ content: `🎯 ${interaction.user.tag} claimed this ticket!` });
