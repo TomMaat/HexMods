@@ -8,7 +8,6 @@ const path = require('path');
 // ============================================
 const DATA_FILE = path.join(__dirname, 'botdata.json');
 
-// Data structuur
 let botData = {
     storage: {
         discord: [],
@@ -19,7 +18,6 @@ let botData = {
     tickets: []
 };
 
-// Laad opgeslagen data
 function loadData() {
     try {
         if (fs.existsSync(DATA_FILE)) {
@@ -36,7 +34,6 @@ function loadData() {
     }
 }
 
-// Sla data op
 function saveData() {
     try {
         const dataToSave = {
@@ -51,11 +48,10 @@ function saveData() {
     }
 }
 
-// Laad data bij opstart
 loadData();
 
 // ============================================
-// CONFIG - ENVIRONMENT VARIABLES
+// CONFIG
 // ============================================
 const CONFIG = {
     GENERAL_CATEGORY_ID: process.env.GENERAL_CATEGORY_ID,
@@ -115,7 +111,7 @@ app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 const tickets = new Map();
 const joinedMembers = new Set();
 
-// Load saved purchases into memory
+// Load saved purchases
 let purchases = new Map();
 if (botData.purchases && botData.purchases.length > 0) {
     for (const p of botData.purchases) {
@@ -124,7 +120,7 @@ if (botData.purchases && botData.purchases.length > 0) {
     console.log(`✅ ${purchases.size} producten geladen uit opslag`);
 }
 
-// Load saved storage into memory
+// Load saved storage
 const storage = {
     discord: botData.storage.discord || [],
     steam: botData.storage.steam || [],
@@ -164,16 +160,36 @@ function getAccountsByType(type) {
     return storage[type].map(account => ({ ...account, type: type }));
 }
 
-function removeAccountById(accountId, type) {
-    const index = storage[type].findIndex(a => a.id === accountId);
-    if (index !== -1) {
-        const removed = storage[type][index];
-        storage[type].splice(index, 1);
+function removeRandomAccounts(type, amount, givenBy) {
+    const removed = [];
+    const accountsToRemove = [];
+    
+    // Randomly select accounts
+    const shuffled = [...storage[type]];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    
+    for (let i = 0; i < Math.min(amount, shuffled.length); i++) {
+        accountsToRemove.push(shuffled[i]);
+    }
+    
+    for (const account of accountsToRemove) {
+        const index = storage[type].findIndex(a => a.id === account.id);
+        if (index !== -1) {
+            const removedAccount = storage[type][index];
+            storage[type].splice(index, 1);
+            removed.push({ ...removedAccount, type: type });
+        }
+    }
+    
+    if (removed.length > 0) {
         saveAllData();
         updateAllStorageDisplays();
-        return { ...removed, type: type };
     }
-    return null;
+    
+    return removed;
 }
 
 function getStorageStats() {
@@ -194,8 +210,13 @@ function giveBundle() {
         if (storage[type].length === 0) return null;
         const randomIndex = Math.floor(Math.random() * storage[type].length);
         const account = storage[type][randomIndex];
-        removeAccountById(account.id, type);
-        return account;
+        const index = storage[type].findIndex(a => a.id === account.id);
+        if (index !== -1) {
+            const removed = storage[type][index];
+            storage[type].splice(index, 1);
+            return { ...removed, type: type };
+        }
+        return null;
     };
     
     const discordAccount = getRandom('discord');
@@ -209,39 +230,6 @@ function giveBundle() {
         steam: steamAccount,
         fivem: fivemAccount
     };
-}
-
-// ============================================
-// PURCHASE FUNCTIONS (MET AUTO-SAVE)
-// ============================================
-function addPurchase(name, content, createdBy, hasFile, fileUrl, fileName) {
-    const purchase = {
-        name: name.toLowerCase(),
-        originalName: name,
-        content: content,
-        createdBy: createdBy,
-        createdAt: Date.now(),
-        hasFile: hasFile || false,
-        fileUrl: fileUrl || null,
-        fileName: fileName || null
-    };
-    purchases.set(name.toLowerCase(), purchase);
-    saveAllData();
-    return purchase;
-}
-
-function getPurchase(name) {
-    return purchases.get(name.toLowerCase());
-}
-
-function getAllPurchases() {
-    return Array.from(purchases.values());
-}
-
-function removePurchase(name) {
-    const deleted = purchases.delete(name.toLowerCase());
-    if (deleted) saveAllData();
-    return deleted;
 }
 
 // ============================================
@@ -426,9 +414,9 @@ async function registerCommands(guild) {
         },
         {
             name: 'giveaccount',
-            description: 'Give an account to a user',
+            description: 'Give random account(s) to a user',
             options: [
-                { name: 'user', description: 'The user to give the account to', type: 6, required: true }
+                { name: 'user', description: 'The user to give the account(s) to', type: 6, required: true }
             ]
         },
         {
@@ -923,7 +911,18 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
         
-        addPurchase(name, finalContent, interaction.user.tag, !!attachmentUrl, attachmentUrl, attachmentName);
+        const purchase = {
+            name: name.toLowerCase(),
+            originalName: name,
+            content: finalContent,
+            createdBy: interaction.user.tag,
+            createdAt: Date.now(),
+            hasFile: !!attachmentUrl,
+            fileUrl: attachmentUrl,
+            fileName: attachmentName
+        };
+        purchases.set(name.toLowerCase(), purchase);
+        saveAllData();
         
         await interaction.reply({ content: `✅ Purchase option **${name}** has been created! Use /purchase to sell it.`, flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
@@ -943,7 +942,7 @@ client.on('interactionCreate', async (interaction) => {
         }
         
         const buyer = interaction.options.getUser('user');
-        const allPurchases = getAllPurchases();
+        const allPurchases = Array.from(purchases.values());
         
         if (allPurchases.length === 0) {
             await interaction.reply({ content: '❌ No products available for purchase yet.', flags: 64 });
@@ -1023,7 +1022,7 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     
-    // /giveaccount command
+    // /giveaccount command - NIEUW MET AANTAL EN RANDOM
     if (interaction.commandName === 'giveaccount') {
         if (!interaction.member.roles.cache.has(CONFIG.GIVEACCOUNT_ROLE_ID)) {
             await interaction.reply({ content: '❌ You do not have permission to give accounts.', flags: 64 });
@@ -1032,14 +1031,20 @@ client.on('interactionCreate', async (interaction) => {
         }
         
         const user = interaction.options.getUser('user');
-        const totalAccounts = storage.discord.length + storage.steam.length + storage.fivem.length;
         
-        if (totalAccounts === 0) {
+        // Check which categories have accounts
+        const availableCategories = [];
+        if (storage.discord.length > 0) availableCategories.push('discord');
+        if (storage.steam.length > 0) availableCategories.push('steam');
+        if (storage.fivem.length > 0) availableCategories.push('fivem');
+        
+        if (availableCategories.length === 0) {
             await interaction.reply({ content: '❌ No accounts available in storage!', flags: 64 });
             setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
             return;
         }
         
+        // First: Ask for category
         const categoryOptions = [];
         
         if (storage.discord.length > 0) {
@@ -1110,6 +1115,8 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
         
+        saveAllData();
+        
         const bundleEmbed = new EmbedBuilder()
             .setTitle(`🎁 **Bundle Given to ${user.tag}**`)
             .setDescription(`**Bundle bestaat uit:**\n\n**Discord Account:**\n${bundle.discord.content}\n\n**Steam Account:**\n${bundle.steam.content}\n\n**FiveM Account:**\n${bundle.fivem.content}`)
@@ -1179,59 +1186,47 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    const accounts = getAccountsByType(category);
+    const maxAmount = storage[category].length;
     
-    if (accounts.length === 0) {
+    if (maxAmount === 0) {
         await interaction.reply({ content: `❌ No ${category} accounts available!`, flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
         return;
     }
     
-    const accountOptions = accounts.map(account => {
-        let emoji = '💬';
-        if (category === 'steam') emoji = '🎮';
-        if (category === 'fivem') emoji = '🚗';
-        
-        let label = `${account.id}`;
-        if (label.length > 100) label = label.substring(0, 97) + '...';
-        
-        return new StringSelectMenuOptionBuilder()
-            .setLabel(label)
-            .setDescription(`${account.content.substring(0, 80)}${account.content.length > 80 ? '...' : ''}`)
-            .setValue(account.id)
-            .setEmoji(emoji);
-    });
+    // Create modal to ask for amount
+    const modal = new ModalBuilder()
+        .setCustomId(`giveaccount_amount_${userId}_${channelId}_${category}`)
+        .setTitle(`Give ${category} Account(s)`)
+        .addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('amount')
+                    .setLabel(`Amount (1-${maxAmount})`)
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder(`How many accounts? (Max ${maxAmount})`)
+                    .setRequired(true)
+                    .setMaxLength(3)
+            )
+        );
     
-    const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId(`giveaccount_account_${userId}_${channelId}_${category}`)
-        .setPlaceholder(`Select an account to give (${accounts.length} available)`)
-        .addOptions(accountOptions.slice(0, 25));
-    
-    const row = new ActionRowBuilder().addComponents(selectMenu);
-    
-    let categoryName = 'Discord';
-    if (category === 'steam') categoryName = 'Steam';
-    if (category === 'fivem') categoryName = 'FiveM';
-    
-    await interaction.update({
-        content: `📦 **Select an account to give to ${targetUser.user.tag} (${categoryName} accounts)**`,
-        components: [row],
-        flags: 64
-    });
+    await interaction.showModal(modal);
 });
 
 // ============================================
-// GIVEACCOUNT ACCOUNT SELECTION HANDLER
+// GIVEACCOUNT AMOUNT MODAL HANDLER
 // ============================================
 client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isStringSelectMenu()) return;
-    if (!interaction.customId.startsWith('giveaccount_account_')) return;
+    if (!interaction.isModalSubmit()) return;
+    if (!interaction.customId.startsWith('giveaccount_amount_')) return;
     
     const parts = interaction.customId.split('_');
     const userId = parts[2];
     const channelId = parts[3];
     const category = parts[4];
-    const accountId = interaction.values[0];
+    
+    const amount = parseInt(interaction.fields.getTextInputValue('amount'));
+    const maxAmount = storage[category].length;
     
     const targetUser = await interaction.guild.members.fetch(userId).catch(() => null);
     const targetChannel = interaction.guild.channels.cache.get(channelId);
@@ -1248,37 +1243,51 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    const removedAccount = removeAccountById(accountId, category);
+    if (isNaN(amount) || amount < 1 || amount > maxAmount) {
+        await interaction.reply({ content: `❌ Invalid amount! Please enter a number between 1 and ${maxAmount}.`, flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+        return;
+    }
     
-    if (!removedAccount) {
-        await interaction.reply({ content: '❌ Failed to give account. It may have been already given.', flags: 64 });
+    // Remove random accounts
+    const removedAccounts = removeRandomAccounts(category, amount, interaction.user.tag);
+    
+    if (removedAccounts.length === 0) {
+        await interaction.reply({ content: `❌ Failed to give accounts. No accounts available.`, flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
         return;
     }
     
     let typeEmoji = '💬';
-    if (removedAccount.type === 'steam') typeEmoji = '🎮';
-    if (removedAccount.type === 'fivem') typeEmoji = '🚗';
+    if (category === 'steam') typeEmoji = '🎮';
+    if (category === 'fivem') typeEmoji = '🚗';
+    
+    let accountsText = '';
+    for (let i = 0; i < removedAccounts.length; i++) {
+        accountsText += `**${i + 1}.** ${removedAccounts[i].content}\n\n`;
+    }
     
     const accountEmbed = new EmbedBuilder()
-        .setTitle(`${typeEmoji} **${removedAccount.type.toUpperCase()} Account Given**`)
-        .setDescription(removedAccount.content)
+        .setTitle(`${typeEmoji} **${removedAccounts.length} ${category.toUpperCase()} Account(s) Given**`)
+        .setDescription(accountsText)
         .setColor(0x00ff00)
         .setThumbnail(LOGO_URL)
         .addFields(
             { name: '👤 Given to', value: targetUser.user.tag, inline: true },
-            { name: '🆔 Account ID', value: `\`${removedAccount.id}\``, inline: true },
-            { name: '📅 Given at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+            { name: '📦 Amount', value: `${removedAccounts.length} account(s)`, inline: true },
+            { name: '📅 Given at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+            { name: '🆔 Account IDs', value: removedAccounts.map(a => `\`${a.id}\``).join(', '), inline: false }
         )
         .setFooter({ text: `Given by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
         .setTimestamp();
     
     await targetChannel.send({ embeds: [accountEmbed] });
     
+    // Send DM to user
     try {
         const dmEmbed = new EmbedBuilder()
-            .setTitle(`${typeEmoji} **${removedAccount.type.toUpperCase()} Account**`)
-            .setDescription(removedAccount.content)
+            .setTitle(`${typeEmoji} **${removedAccounts.length} ${category.toUpperCase()} Account(s)**`)
+            .setDescription(accountsText)
             .setColor(0x00ff00)
             .setThumbnail(LOGO_URL)
             .addFields(
@@ -1292,12 +1301,12 @@ client.on('interactionCreate', async (interaction) => {
         console.log(`Could not DM ${targetUser.user.tag}: ${error.message}`);
     }
     
-    await interaction.reply({ content: `✅ **Account ${accountId}** has been given to ${targetUser.user.tag}!`, flags: 64 });
+    await interaction.reply({ content: `✅ **${removedAccounts.length} account(s)** has been given to ${targetUser.user.tag}!`, flags: 64 });
     setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
     
     const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
     if (logChannel) {
-        logChannel.send({ content: `📝 **/giveaccount** by ${interaction.user.tag} for ${targetUser.user.tag}\n**Account ID:** ${accountId}\n**Type:** ${removedAccount.type}` }).catch(() => {});
+        logChannel.send({ content: `📝 **/giveaccount** by ${interaction.user.tag} for ${targetUser.user.tag}\n**Category:** ${category}\n**Amount:** ${removedAccounts.length}\n**IDs:** ${removedAccounts.map(a => a.id).join(', ')}` }).catch(() => {});
     }
 });
 
@@ -1328,7 +1337,7 @@ client.on('interactionCreate', async (interaction) => {
     }
     
     const productName = interaction.values[0];
-    const purchase = getPurchase(productName);
+    const purchase = purchases.get(productName);
     
     if (!purchase) {
         await interaction.reply({ content: '❌ Product not found!', flags: 64 });
@@ -1361,7 +1370,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
-// BUTTON HANDLERS (Storage Refresh/Export)
+// BUTTON HANDLERS
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
