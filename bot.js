@@ -128,12 +128,6 @@ const storage = {
 };
 console.log(`✅ Storage geladen: Discord: ${storage.discord.length}, Steam: ${storage.steam.length}, FiveM: ${storage.fivem.length}`);
 
-let storageMessages = {
-    discord: null,
-    steam: null,
-    fivem: null
-};
-
 // ============================================
 // STORAGE FUNCTIONS (MET AUTO-SAVE)
 // ============================================
@@ -164,7 +158,6 @@ function removeRandomAccounts(type, amount, givenBy) {
     const removed = [];
     const accountsToRemove = [];
     
-    // Randomly select accounts
     const shuffled = [...storage[type]];
     for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -233,7 +226,7 @@ function giveBundle() {
 }
 
 // ============================================
-// UPDATE STORAGE DISPLAYS
+// UPDATE STORAGE DISPLAYS (MET VERWIJDEREN OUDE BERICHTEN)
 // ============================================
 async function updateStorageDisplayForType(type) {
     const guild = client.guilds.cache.first();
@@ -270,6 +263,27 @@ async function updateStorageDisplayForType(type) {
         return;
     }
     
+    // VERWIJDER ALLE OUDE BERICHTEN in het kanaal
+    try {
+        const messages = await storageChannel.messages.fetch();
+        if (messages.size > 0) {
+            await storageChannel.bulkDelete(messages);
+            console.log(`🗑️ ${messages.size} oude berichten verwijderd uit ${type} kanaal`);
+            // Wacht even zodat Discord de verwijdering kan verwerken
+            await delay(1000);
+        }
+    } catch (error) {
+        console.log(`⚠️ Kon niet alle berichten verwijderen in ${type} kanaal:`, error.message);
+        // Probeer in batches als bulkDelete niet werkt
+        try {
+            const messages = await storageChannel.messages.fetch({ limit: 100 });
+            for (const msg of messages.values()) {
+                await msg.delete().catch(() => {});
+                await delay(200);
+            }
+        } catch (e) {}
+    }
+    
     const stats = getStorageStats();
     const accountList = storage[type].map(a => `\`${a.id}\` - ${a.content.substring(0, 80)}...`).join('\n') || '`Geen accounts beschikbaar`';
     
@@ -281,7 +295,7 @@ async function updateStorageDisplayForType(type) {
         .addFields(
             { name: `📋 **Accounts**`, value: accountList.length > 1000 ? accountList.substring(0, 997) + '...' : accountList, inline: false }
         )
-        .setFooter({ text: `Accounts worden automatisch verwijderd na uitgifte` })
+        .setFooter({ text: `Accounts worden automatisch verwijderd na uitgifte | Gebruik /giveaccount om accounts te geven` })
         .setTimestamp();
     
     const row = new ActionRowBuilder().addComponents(
@@ -295,20 +309,8 @@ async function updateStorageDisplayForType(type) {
             .setStyle(ButtonStyle.Primary)
     );
     
-    try {
-        if (storageMessages[type]) {
-            const existingMessage = await storageChannel.messages.fetch(storageMessages[type]).catch(() => null);
-            if (existingMessage) {
-                await existingMessage.edit({ embeds: [embed], components: [row] });
-                return;
-            }
-        }
-        
-        const newMessage = await storageChannel.send({ embeds: [embed], components: [row] });
-        storageMessages[type] = newMessage.id;
-    } catch (error) {
-        console.log(`❌ Failed to update ${type} storage:`, error.message);
-    }
+    await storageChannel.send({ embeds: [embed], components: [row] });
+    console.log(`✅ Nieuw storage bericht verzonden in ${type} kanaal`);
 }
 
 async function updateAllStorageDisplays() {
@@ -1022,7 +1024,7 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     
-    // /giveaccount command - NIEUW MET AANTAL EN RANDOM
+    // /giveaccount command
     if (interaction.commandName === 'giveaccount') {
         if (!interaction.member.roles.cache.has(CONFIG.GIVEACCOUNT_ROLE_ID)) {
             await interaction.reply({ content: '❌ You do not have permission to give accounts.', flags: 64 });
@@ -1032,7 +1034,6 @@ client.on('interactionCreate', async (interaction) => {
         
         const user = interaction.options.getUser('user');
         
-        // Check which categories have accounts
         const availableCategories = [];
         if (storage.discord.length > 0) availableCategories.push('discord');
         if (storage.steam.length > 0) availableCategories.push('steam');
@@ -1044,7 +1045,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
         
-        // First: Ask for category
         const categoryOptions = [];
         
         if (storage.discord.length > 0) {
@@ -1194,7 +1194,6 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    // Create modal to ask for amount
     const modal = new ModalBuilder()
         .setCustomId(`giveaccount_amount_${userId}_${channelId}_${category}`)
         .setTitle(`Give ${category} Account(s)`)
@@ -1249,7 +1248,6 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    // Remove random accounts
     const removedAccounts = removeRandomAccounts(category, amount, interaction.user.tag);
     
     if (removedAccounts.length === 0) {
@@ -1283,7 +1281,6 @@ client.on('interactionCreate', async (interaction) => {
     
     await targetChannel.send({ embeds: [accountEmbed] });
     
-    // Send DM to user
     try {
         const dmEmbed = new EmbedBuilder()
             .setTitle(`${typeEmoji} **${removedAccounts.length} ${category.toUpperCase()} Account(s)**`)
