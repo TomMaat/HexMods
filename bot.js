@@ -119,7 +119,8 @@ async function registerCommands(guild) {
             description: 'Create a purchase option (admin only)',
             options: [
                 { name: 'name', description: 'Product name', type: 3, required: true },
-                { name: 'content', description: 'The file link or message to send', type: 3, required: true }
+                { name: 'content', description: 'The text message to send (optional if file is attached)', type: 3, required: false },
+                { name: 'file', description: 'File to attach (optional)', type: 11, required: false }
             ]
         },
         {
@@ -502,7 +503,7 @@ client.on('interactionCreate', async (interaction) => {
         setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
     }
     
-    // /createpurchase command (Admin only)
+    // /createpurchase command (Admin only) - WITH FILE ATTACHMENT SUPPORT
     if (interaction.commandName === 'createpurchase') {
         if (!interaction.member.roles.cache.has(CONFIG.CREATE_PURCHASE_ROLE_ID)) {
             await interaction.reply({ content: '❌ You do not have permission to create purchases.', flags: 64 });
@@ -513,12 +514,38 @@ client.on('interactionCreate', async (interaction) => {
         const name = interaction.options.getString('name');
         const content = interaction.options.getString('content');
         
+        // Check for file attachments
+        let attachmentUrl = null;
+        let attachmentName = null;
+        
+        if (interaction.options.getAttachment('file')) {
+            const attachment = interaction.options.getAttachment('file');
+            attachmentUrl = attachment.url;
+            attachmentName = attachment.name;
+        }
+        
+        // Combine text content and file if both exist
+        let finalContent = content || '';
+        if (attachmentUrl) {
+            if (finalContent) finalContent += '\n\n';
+            finalContent += `📎 **File:** ${attachmentName}\n🔗 **Download:** ${attachmentUrl}`;
+        }
+        
+        if (!finalContent || finalContent.trim() === '') {
+            await interaction.reply({ content: '❌ Please provide either text content or a file.', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            return;
+        }
+        
         // Store the purchase
         purchases.set(name.toLowerCase(), {
             name: name,
-            content: content,
+            content: finalContent,
             createdBy: interaction.user.tag,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            hasFile: !!attachmentUrl,
+            fileUrl: attachmentUrl,
+            fileName: attachmentName
         });
         
         await interaction.reply({ content: `✅ Purchase option **${name}** has been created! Use /purchase to sell it.`, flags: 64 });
@@ -527,7 +554,7 @@ client.on('interactionCreate', async (interaction) => {
         // Log to log channel
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
-            logChannel.send({ content: `📝 **/createpurchase** by ${interaction.user.tag}\n**Product:** ${name}\n**Content:** ${content.substring(0, 100)}...` }).catch(() => {});
+            logChannel.send({ content: `📝 **/createpurchase** by ${interaction.user.tag}\n**Product:** ${name}` }).catch(() => {});
         }
     }
     
