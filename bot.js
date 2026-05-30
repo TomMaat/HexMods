@@ -19,6 +19,7 @@ const CONFIG = {
     CREATE_PURCHASE_ROLE_ID: process.env.CREATE_PURCHASE_ROLE_ID,
     PURCHASE_ROLE_ID: process.env.PURCHASE_ROLE_ID,
     VERIFYALL_ROLE_ID: process.env.VERIFYALL_ROLE_ID,
+    GIVEACCOUNT_ROLE_ID: process.env.GIVEACCOUNT_ROLE_ID,
     
     SPOOF_ACCOUNTS_ROLE_ID: process.env.SPOOF_ACCOUNTS_ROLE_ID,
     TRIGGER_SHOP_ROLE_ID: process.env.TRIGGER_SHOP_ROLE_ID,
@@ -32,6 +33,11 @@ const CONFIG = {
     TICKET_CREATION_CHANNEL_ID: process.env.TICKET_CREATION_CHANNEL_ID,
     ROLE_CLAIM_CHANNEL_ID: process.env.ROLE_CLAIM_CHANNEL_ID,
     VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
+    
+    // 3 VERSCHILLENDE STORAGE KANALEN
+    STORAGE_DISCORD_CHANNEL_ID: process.env.STORAGE_DISCORD_CHANNEL_ID,
+    STORAGE_STEAM_CHANNEL_ID: process.env.STORAGE_STEAM_CHANNEL_ID,
+    STORAGE_FIVEM_CHANNEL_ID: process.env.STORAGE_FIVEM_CHANNEL_ID,
     
     TOKEN: process.env.TOKEN
 };
@@ -58,8 +64,207 @@ const tickets = new Map();
 const joinedMembers = new Set();
 const purchases = new Map();
 
-// CRISP, CLEAR LOGO URL - High quality PNG
-const LOGO_URL = 'https://cdn.discordapp.com/attachments/1509665549410635787/1509928894361370735/hexmods.png?ex=6a1b9f1d&is=6a1a4d9d&hm=4ed75f2983a507ec97c805523f7caddd624ff981960a30acd0e3159eb5eefca3&';
+// ============================================
+// STORAGE SYSTEM - 3 VERSCHILLENDE TYPES
+// ============================================
+const storage = {
+    discord: [],  // Discord accounts
+    steam: [],    // Steam accounts
+    fivem: []     // FiveM accounts
+};
+
+// Message IDs voor elk kanaal
+let storageMessages = {
+    discord: null,
+    steam: null,
+    fivem: null
+};
+
+// Helper function to add account to storage
+function addAccount(type, accountData, addedBy) {
+    const account = {
+        id: Math.random().toString(36).substring(2, 10).toUpperCase(),
+        content: accountData,
+        addedBy: addedBy,
+        addedAt: Date.now()
+    };
+    storage[type].push(account);
+    updateAllStorageDisplays();
+    return account;
+}
+
+// Helper function to get all accounts from storage
+function getAllAccounts() {
+    const all = [];
+    for (const type of ['discord', 'steam', 'fivem']) {
+        for (const account of storage[type]) {
+            all.push({
+                ...account,
+                type: type
+            });
+        }
+    }
+    return all;
+}
+
+// Helper function to remove account by ID and type
+function removeAccountById(accountId, type = null) {
+    const typesToCheck = type ? [type] : ['discord', 'steam', 'fivem'];
+    
+    for (const t of typesToCheck) {
+        const index = storage[t].findIndex(a => a.id === accountId);
+        if (index !== -1) {
+            const removed = storage[t][index];
+            storage[t].splice(index, 1);
+            updateAllStorageDisplays();
+            return { ...removed, type: t };
+        }
+    }
+    return null;
+}
+
+// Helper function to get account by ID
+function getAccountById(accountId) {
+    for (const type of ['discord', 'steam', 'fivem']) {
+        const account = storage[type].find(a => a.id === accountId);
+        if (account) return { ...account, type: type };
+    }
+    return null;
+}
+
+// Helper function to get random account from a type
+function getRandomAccount(type) {
+    if (storage[type].length === 0) return null;
+    const randomIndex = Math.floor(Math.random() * storage[type].length);
+    const account = storage[type][randomIndex];
+    removeAccountById(account.id, type);
+    return account;
+}
+
+// Helper function to get storage stats
+function getStorageStats() {
+    return {
+        discord: storage.discord.length,
+        steam: storage.steam.length,
+        fivem: storage.fivem.length,
+        total: storage.discord.length + storage.steam.length + storage.fivem.length
+    };
+}
+
+// Helper function to check if bundle is available
+function isBundleAvailable() {
+    return storage.discord.length > 0 && storage.steam.length > 0 && storage.fivem.length > 0;
+}
+
+// Helper function to give bundle (one of each)
+function giveBundle() {
+    const discordAccount = getRandomAccount('discord');
+    const steamAccount = getRandomAccount('steam');
+    const fivemAccount = getRandomAccount('fivem');
+    
+    if (!discordAccount || !steamAccount || !fivemAccount) return null;
+    
+    return {
+        discord: discordAccount,
+        steam: steamAccount,
+        fivem: fivemAccount
+    };
+}
+
+// ============================================
+// UPDATE ALL 3 STORAGE DISPLAYS
+// ============================================
+async function updateStorageDisplayForType(type) {
+    const guild = client.guilds.cache.first();
+    if (!guild) return;
+    
+    let channelId;
+    let title;
+    let emoji;
+    let color;
+    
+    switch(type) {
+        case 'discord':
+            channelId = CONFIG.STORAGE_DISCORD_CHANNEL_ID;
+            title = '💬 **DISCORD ACCOUNTS STORAGE**';
+            emoji = '💬';
+            color = 0x5865F2;
+            break;
+        case 'steam':
+            channelId = CONFIG.STORAGE_STEAM_CHANNEL_ID;
+            title = '🎮 **STEAM ACCOUNTS STORAGE**';
+            emoji = '🎮';
+            color = 0x1b2838;
+            break;
+        case 'fivem':
+            channelId = CONFIG.STORAGE_FIVEM_CHANNEL_ID;
+            title = '🚗 **FIVEM ACCOUNTS STORAGE**';
+            emoji = '🚗';
+            color = 0x00ff00;
+            break;
+        default:
+            return;
+    }
+    
+    const storageChannel = guild.channels.cache.get(channelId);
+    if (!storageChannel) {
+        console.log(`❌ Storage channel for ${type} not configured!`);
+        return;
+    }
+    
+    const stats = getStorageStats();
+    const accountList = storage[type].map(a => `\`${a.id}\` - ${a.content.substring(0, 80)}...`).join('\n') || '`Geen accounts beschikbaar`';
+    
+    const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(`**Aantal accounts:** ${stats[type]}\n*Laatst bijgewerkt: <t:${Math.floor(Date.now() / 1000)}:R>*`)
+        .setColor(color)
+        .setThumbnail(LOGO_URL)
+        .addFields(
+            { name: `📋 **Accounts**`, value: accountList.length > 1000 ? accountList.substring(0, 997) + '...' : accountList, inline: false }
+        )
+        .setFooter({ text: `Accounts worden automatisch verwijderd na uitgifte` })
+        .setTimestamp();
+    
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`refresh_${type}`)
+            .setLabel('🔄 Refresh')
+            .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId(`export_${type}`)
+            .setLabel('📋 Exporteer')
+            .setStyle(ButtonStyle.Primary)
+    );
+    
+    try {
+        if (storageMessages[type]) {
+            const existingMessage = await storageChannel.messages.fetch(storageMessages[type]).catch(() => null);
+            if (existingMessage) {
+                await existingMessage.edit({ embeds: [embed], components: [row] });
+                console.log(`✅ ${type} storage display updated!`);
+                return;
+            }
+        }
+        
+        const newMessage = await storageChannel.send({ embeds: [embed], components: [row] });
+        storageMessages[type] = newMessage.id;
+        console.log(`✅ ${type} storage display created!`);
+    } catch (error) {
+        console.log(`❌ Failed to update ${type} storage display:`, error.message);
+    }
+}
+
+async function updateAllStorageDisplays() {
+    await updateStorageDisplayForType('discord');
+    await updateStorageDisplayForType('steam');
+    await updateStorageDisplayForType('fivem');
+}
+
+// ============================================
+// CRISP, CLEAR LOGO URL
+// ============================================
+const LOGO_URL = 'https://cdn.discordapp.com/attachments/1509665549410635787/1509928894361370735/hexmods.png';
 
 // Helper function for delay
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -139,6 +344,37 @@ async function registerCommands(guild) {
             name: 'verifyall',
             description: 'Verify ALL members (adds verified role, removes unverified)',
             options: []
+        },
+        {
+            name: 'addaccount',
+            description: 'Add an account to storage (admin only)',
+            options: [
+                { name: 'type', description: 'Account type', type: 3, required: true, choices: [
+                    { name: 'Discord', value: 'discord' },
+                    { name: 'Steam', value: 'steam' },
+                    { name: 'FiveM', value: 'fivem' }
+                ] },
+                { name: 'account', description: 'The account login details', type: 3, required: true }
+            ]
+        },
+        {
+            name: 'giveaccount',
+            description: 'Give an account to a user',
+            options: [
+                { name: 'user', description: 'The user to give the account to', type: 6, required: true },
+                { name: 'type', description: 'Account type (optional, shows all if not specified)', type: 3, required: false, choices: [
+                    { name: 'Discord', value: 'discord' },
+                    { name: 'Steam', value: 'steam' },
+                    { name: 'FiveM', value: 'fivem' }
+                ] }
+            ]
+        },
+        {
+            name: 'givebundle',
+            description: 'Give a bundle (1 Discord, 1 Steam, 1 FiveM account)',
+            options: [
+                { name: 'user', description: 'The user to give the bundle to', type: 6, required: true }
+            ]
         }
     ];
     await guild.commands.set(commands);
@@ -152,7 +388,7 @@ async function deleteOldCommands(guild) {
     try {
         const commands = await guild.commands.fetch();
         for (const command of commands.values()) {
-            if (!['send', 'product', 'clear', 'review', 'createpurchase', 'purchase', 'verifyall'].includes(command.name)) {
+            if (!['send', 'product', 'clear', 'review', 'createpurchase', 'purchase', 'verifyall', 'addaccount', 'giveaccount', 'givebundle'].includes(command.name)) {
                 await guild.commands.delete(command.id);
             }
         }
@@ -443,6 +679,14 @@ client.once('ready', async () => {
         await sendVerificationMessage(guild);
         await sendRoleClaimMessage(guild);
         await sendTicketMessage(guild);
+        
+        // Update alle 3 storage displays
+        await updateAllStorageDisplays();
+        
+        // Auto-refresh elke 30 seconden
+        setInterval(async () => {
+            await updateAllStorageDisplays();
+        }, 30000);
     }
     console.log('✅ Bot is fully ready!');
 });
@@ -453,7 +697,7 @@ client.once('ready', async () => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     
-    // /send command - Opens a modal for multi-line messages
+    // /send command
     if (interaction.commandName === 'send') {
         if (!interaction.member.roles.cache.has(CONFIG.SEND_ROLE_ID)) {
             await interaction.reply({ content: '❌ You do not have permission to use `/send`.', flags: 64 });
@@ -690,50 +934,173 @@ client.on('interactionCreate', async (interaction) => {
         
         await verifyAllMembers(interaction);
     }
+    
+    // /addaccount command
+    if (interaction.commandName === 'addaccount') {
+        if (!interaction.member.roles.cache.has(CONFIG.CREATE_PURCHASE_ROLE_ID)) {
+            await interaction.reply({ content: '❌ You do not have permission to add accounts.', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            return;
+        }
+        
+        const type = interaction.options.getString('type');
+        const accountData = interaction.options.getString('account');
+        
+        const account = addAccount(type, accountData, interaction.user.tag);
+        
+        const embed = new EmbedBuilder()
+            .setTitle(`✅ Account Added to ${type.charAt(0).toUpperCase() + type.slice(1)} Storage`)
+            .setDescription(`**Account ID:** \`${account.id}\`\n**Content:** ${accountData.substring(0, 500)}`)
+            .setColor(0x00ff00)
+            .setThumbnail(LOGO_URL)
+            .addFields(
+                { name: '📊 Storage Stats', value: `Discord: ${storage.discord.length} | Steam: ${storage.steam.length} | FiveM: ${storage.fivem.length}`, inline: false }
+            )
+            .setFooter({ text: `Added by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed], flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 10000);
+        
+        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+        if (logChannel) {
+            logChannel.send({ content: `📝 **/addaccount** by ${interaction.user.tag}\n**Type:** ${type}\n**ID:** ${account.id}` }).catch(() => {});
+        }
+    }
+    
+    // /giveaccount command
+    if (interaction.commandName === 'giveaccount') {
+        if (!interaction.member.roles.cache.has(CONFIG.GIVEACCOUNT_ROLE_ID)) {
+            await interaction.reply({ content: '❌ You do not have permission to give accounts.', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            return;
+        }
+        
+        const user = interaction.options.getUser('user');
+        const typeFilter = interaction.options.getString('type');
+        
+        let accounts = getAllAccounts();
+        if (typeFilter) {
+            accounts = accounts.filter(a => a.type === typeFilter);
+        }
+        
+        if (accounts.length === 0) {
+            await interaction.reply({ content: '❌ No accounts available in storage!', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            return;
+        }
+        
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId(`giveaccount_select_${user.id}_${interaction.channelId}`)
+            .setPlaceholder('Select an account to give')
+            .addOptions(
+                accounts.map(account => {
+                    let typeEmoji = '💬';
+                    if (account.type === 'steam') typeEmoji = '🎮';
+                    if (account.type === 'fivem') typeEmoji = '🚗';
+                    
+                    let label = `${typeEmoji} ${account.type.toUpperCase()} - ${account.id}`;
+                    if (label.length > 100) label = label.substring(0, 97) + '...';
+                    
+                    return new StringSelectMenuOptionBuilder()
+                        .setLabel(label)
+                        .setDescription(`${account.content.substring(0, 80)}${account.content.length > 80 ? '...' : ''}`)
+                        .setValue(account.id)
+                        .setEmoji(typeEmoji);
+                })
+            );
+        
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+        
+        await interaction.reply({
+            content: `📦 **Select an account to give to ${user}**`,
+            components: [row],
+            flags: 64
+        });
+    }
+    
+    // /givebundle command
+    if (interaction.commandName === 'givebundle') {
+        if (!interaction.member.roles.cache.has(CONFIG.GIVEACCOUNT_ROLE_ID)) {
+            await interaction.reply({ content: '❌ You do not have permission to give bundles.', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            return;
+        }
+        
+        const user = interaction.options.getUser('user');
+        
+        if (!isBundleAvailable()) {
+            await interaction.reply({ content: '❌ Bundle not available! Need at least 1 Discord, 1 Steam, and 1 FiveM account.', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+            return;
+        }
+        
+        const bundle = giveBundle();
+        
+        if (!bundle) {
+            await interaction.reply({ content: '❌ Failed to create bundle. Please check storage.', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+            return;
+        }
+        
+        const bundleEmbed = new EmbedBuilder()
+            .setTitle(`🎁 **Bundle Given to ${user.tag}**`)
+            .setDescription(`**Bundle bestaat uit:**\n\n**Discord Account:**\n${bundle.discord.content}\n\n**Steam Account:**\n${bundle.steam.content}\n\n**FiveM Account:**\n${bundle.fivem.content}`)
+            .setColor(0x00ff00)
+            .setThumbnail(LOGO_URL)
+            .addFields(
+                { name: '📦 Bundle IDs', value: `Discord: \`${bundle.discord.id}\`\nSteam: \`${bundle.steam.id}\`\nFiveM: \`${bundle.fivem.id}\``, inline: true },
+                { name: '👤 Gegeven door', value: interaction.user.tag, inline: true },
+                { name: '📅 Gegeven op', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+            )
+            .setFooter({ text: 'Bundle Delivery', iconURL: interaction.user.displayAvatarURL() })
+            .setTimestamp();
+        
+        await interaction.channel.send({ embeds: [bundleEmbed] });
+        
+        try {
+            const dmEmbed = new EmbedBuilder()
+                .setTitle(`🎁 **Bundle Received!**`)
+                .setDescription(`**Je hebt een bundle ontvangen met:**\n\n**Discord Account:**\n${bundle.discord.content}\n\n**Steam Account:**\n${bundle.steam.content}\n\n**FiveM Account:**\n${bundle.fivem.content}`)
+                .setColor(0x00ff00)
+                .setThumbnail(LOGO_URL)
+                .addFields(
+                    { name: '📅 Ontvangen op', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                    { name: '🔒 Note', value: 'Keep this message private. Do not share with others.', inline: true }
+                )
+                .setTimestamp();
+            
+            await user.send({ embeds: [dmEmbed] });
+        } catch (error) {
+            console.log(`Could not DM ${user.tag}: ${error.message}`);
+        }
+        
+        await interaction.reply({ content: `✅ **Bundle** has been given to ${user.tag}!`, flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+        
+        const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+        if (logChannel) {
+            logChannel.send({ content: `📝 **/givebundle** by ${interaction.user.tag} for ${user.tag}\n**Bundle IDs:** ${bundle.discord.id}, ${bundle.steam.id}, ${bundle.fivem.id}` }).catch(() => {});
+        }
+    }
 });
 
 // ============================================
-// MODAL HANDLER FOR /send
-// ============================================
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isModalSubmit()) return;
-    if (interaction.customId !== 'send_message_modal') return;
-    
-    const messageContent = interaction.fields.getTextInputValue('message_content');
-    
-    if (!messageContent || messageContent.trim() === '') {
-        await interaction.reply({ content: '❌ Please provide a message.', flags: 64 });
-        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
-        return;
-    }
-    
-    await interaction.channel.send(messageContent);
-    
-    await interaction.reply({ content: '✅ Message sent!', flags: 64 });
-    setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
-    
-    const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
-    if (logChannel) {
-        logChannel.send({ content: `📝 **/send** by ${interaction.user.tag} in ${interaction.channel.name}\n**Message:** ${messageContent.substring(0, 200)}${messageContent.length > 200 ? '...' : ''}` }).catch(() => {});
-    }
-});
-
-// ============================================
-// PURCHASE SELECT MENU HANDLER
+// GIVEACCOUNT SELECT MENU HANDLER
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isStringSelectMenu()) return;
-    if (!interaction.customId.startsWith('purchase_select_')) return;
+    if (!interaction.customId.startsWith('giveaccount_select_')) return;
     
     const parts = interaction.customId.split('_');
-    const buyerId = parts[2];
+    const userId = parts[2];
     const channelId = parts[3];
     
-    const buyer = await interaction.guild.members.fetch(buyerId).catch(() => null);
+    const targetUser = await interaction.guild.members.fetch(userId).catch(() => null);
     const targetChannel = interaction.guild.channels.cache.get(channelId);
     
-    if (!buyer) {
-        await interaction.reply({ content: '❌ Buyer not found!', flags: 64 });
+    if (!targetUser) {
+        await interaction.reply({ content: '❌ User not found!', flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
         return;
     }
@@ -744,36 +1111,65 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    const productName = interaction.values[0];
-    const purchase = purchases.get(productName);
+    const accountId = interaction.values[0];
+    const account = getAccountById(accountId);
     
-    if (!purchase) {
-        await interaction.reply({ content: '❌ Product not found!', flags: 64 });
+    if (!account) {
+        await interaction.reply({ content: '❌ Account not found! It may have been given to someone else.', flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
         return;
     }
     
-    const productEmbed = new EmbedBuilder()
-        .setTitle(`🛍️ **${purchase.name}**`)
-        .setDescription(purchase.content)
+    const removedAccount = removeAccountById(accountId);
+    
+    if (!removedAccount) {
+        await interaction.reply({ content: '❌ Failed to give account. It may have been already given.', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        return;
+    }
+    
+    let typeEmoji = '💬';
+    if (removedAccount.type === 'steam') typeEmoji = '🎮';
+    if (removedAccount.type === 'fivem') typeEmoji = '🚗';
+    
+    const accountEmbed = new EmbedBuilder()
+        .setTitle(`${typeEmoji} **${removedAccount.type.toUpperCase()} Account Given**`)
+        .setDescription(removedAccount.content)
         .setColor(0x00ff00)
         .setThumbnail(LOGO_URL)
         .addFields(
-            { name: '👤 Purchased by', value: buyer.user.tag, inline: true },
-            { name: '🛒 Product', value: purchase.name, inline: true },
-            { name: '📅 Purchased at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+            { name: '👤 Given to', value: targetUser.user.tag, inline: true },
+            { name: '🆔 Account ID', value: `\`${removedAccount.id}\``, inline: true },
+            { name: '📅 Given at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
         )
-        .setFooter({ text: `Purchase completed by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+        .setFooter({ text: `Given by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
         .setTimestamp();
     
-    await targetChannel.send({ embeds: [productEmbed] });
+    await targetChannel.send({ embeds: [accountEmbed] });
     
-    await interaction.reply({ content: `✅ **${purchase.name}** has been sent to ${targetChannel}!`, flags: 64 });
+    try {
+        const dmEmbed = new EmbedBuilder()
+            .setTitle(`${typeEmoji} **${removedAccount.type.toUpperCase()} Account**`)
+            .setDescription(removedAccount.content)
+            .setColor(0x00ff00)
+            .setThumbnail(LOGO_URL)
+            .addFields(
+                { name: '📅 Received at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                { name: '🔒 Note', value: 'Keep this message private. Do not share with others.', inline: true }
+            )
+            .setTimestamp();
+        
+        await targetUser.send({ embeds: [dmEmbed] });
+    } catch (error) {
+        console.log(`Could not DM ${targetUser.user.tag}: ${error.message}`);
+    }
+    
+    await interaction.reply({ content: `✅ **Account ${accountId}** has been given to ${targetUser.user.tag}!`, flags: 64 });
     setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
     
     const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
     if (logChannel) {
-        logChannel.send({ content: `📝 **Purchase** by ${interaction.user.tag} for ${buyer.user.tag}\n**Product:** ${purchase.name}\n**Channel:** ${targetChannel.name}` }).catch(() => {});
+        logChannel.send({ content: `📝 **/giveaccount** by ${interaction.user.tag} for ${targetUser.user.tag}\n**Account ID:** ${accountId}\n**Type:** ${removedAccount.type}` }).catch(() => {});
     }
 });
 
@@ -782,6 +1178,70 @@ client.on('interactionCreate', async (interaction) => {
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
+    
+    // Refresh buttons for each storage type
+    if (interaction.customId === 'refresh_discord') {
+        await updateStorageDisplayForType('discord');
+        await interaction.reply({ content: '🔄 Discord storage display refreshed!', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
+        return;
+    }
+    if (interaction.customId === 'refresh_steam') {
+        await updateStorageDisplayForType('steam');
+        await interaction.reply({ content: '🔄 Steam storage display refreshed!', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
+        return;
+    }
+    if (interaction.customId === 'refresh_fivem') {
+        await updateStorageDisplayForType('fivem');
+        await interaction.reply({ content: '🔄 FiveM storage display refreshed!', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
+        return;
+    }
+    
+    // Export buttons for each storage type
+    if (interaction.customId === 'export_discord') {
+        let exportText = `=== DISCORD ACCOUNTS EXPORT ===\nExported at: ${new Date().toLocaleString()}\nTotal: ${storage.discord.length}\n\n`;
+        storage.discord.forEach(a => {
+            exportText += `ID: ${a.id}\nContent: ${a.content}\nAdded by: ${a.addedBy}\nAdded at: ${new Date(a.addedAt).toLocaleString()}\n---\n`;
+        });
+        const buffer = Buffer.from(exportText, 'utf-8');
+        await interaction.reply({
+            content: '📋 Discord accounts export complete!',
+            files: [{ attachment: buffer, name: `discord_export_${Date.now()}.txt` }],
+            flags: 64
+        });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 30000);
+        return;
+    }
+    if (interaction.customId === 'export_steam') {
+        let exportText = `=== STEAM ACCOUNTS EXPORT ===\nExported at: ${new Date().toLocaleString()}\nTotal: ${storage.steam.length}\n\n`;
+        storage.steam.forEach(a => {
+            exportText += `ID: ${a.id}\nContent: ${a.content}\nAdded by: ${a.addedBy}\nAdded at: ${new Date(a.addedAt).toLocaleString()}\n---\n`;
+        });
+        const buffer = Buffer.from(exportText, 'utf-8');
+        await interaction.reply({
+            content: '📋 Steam accounts export complete!',
+            files: [{ attachment: buffer, name: `steam_export_${Date.now()}.txt` }],
+            flags: 64
+        });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 30000);
+        return;
+    }
+    if (interaction.customId === 'export_fivem') {
+        let exportText = `=== FIVEM ACCOUNTS EXPORT ===\nExported at: ${new Date().toLocaleString()}\nTotal: ${storage.fivem.length}\n\n`;
+        storage.fivem.forEach(a => {
+            exportText += `ID: ${a.id}\nContent: ${a.content}\nAdded by: ${a.addedBy}\nAdded at: ${new Date(a.addedAt).toLocaleString()}\n---\n`;
+        });
+        const buffer = Buffer.from(exportText, 'utf-8');
+        await interaction.reply({
+            content: '📋 FiveM accounts export complete!',
+            files: [{ attachment: buffer, name: `fivem_export_${Date.now()}.txt` }],
+            flags: 64
+        });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 30000);
+        return;
+    }
     
     const roleMap = {
         'claim_spoof': CONFIG.SPOOF_ACCOUNTS_ROLE_ID,
@@ -959,6 +1419,91 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ content: '📄 Generating...', flags: 64 });
         await sendTranscript(interaction.channel, interaction);
         await interaction.editReply({ content: '✅ Transcript sent!' });
+    }
+});
+
+// ============================================
+// MODAL HANDLER FOR /send
+// ============================================
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isModalSubmit()) return;
+    if (interaction.customId !== 'send_message_modal') return;
+    
+    const messageContent = interaction.fields.getTextInputValue('message_content');
+    
+    if (!messageContent || messageContent.trim() === '') {
+        await interaction.reply({ content: '❌ Please provide a message.', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        return;
+    }
+    
+    await interaction.channel.send(messageContent);
+    
+    await interaction.reply({ content: '✅ Message sent!', flags: 64 });
+    setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
+    
+    const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+    if (logChannel) {
+        logChannel.send({ content: `📝 **/send** by ${interaction.user.tag} in ${interaction.channel.name}\n**Message:** ${messageContent.substring(0, 200)}${messageContent.length > 200 ? '...' : ''}` }).catch(() => {});
+    }
+});
+
+// ============================================
+// PURCHASE SELECT MENU HANDLER
+// ============================================
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isStringSelectMenu()) return;
+    if (!interaction.customId.startsWith('purchase_select_')) return;
+    
+    const parts = interaction.customId.split('_');
+    const buyerId = parts[2];
+    const channelId = parts[3];
+    
+    const buyer = await interaction.guild.members.fetch(buyerId).catch(() => null);
+    const targetChannel = interaction.guild.channels.cache.get(channelId);
+    
+    if (!buyer) {
+        await interaction.reply({ content: '❌ Buyer not found!', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        return;
+    }
+    
+    if (!targetChannel) {
+        await interaction.reply({ content: '❌ Channel not found!', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        return;
+    }
+    
+    const productName = interaction.values[0];
+    const purchase = purchases.get(productName);
+    
+    if (!purchase) {
+        await interaction.reply({ content: '❌ Product not found!', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        return;
+    }
+    
+    const productEmbed = new EmbedBuilder()
+        .setTitle(`🛍️ **${purchase.name}**`)
+        .setDescription(purchase.content)
+        .setColor(0x00ff00)
+        .setThumbnail(LOGO_URL)
+        .addFields(
+            { name: '👤 Purchased by', value: buyer.user.tag, inline: true },
+            { name: '🛒 Product', value: purchase.name, inline: true },
+            { name: '📅 Purchased at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+        )
+        .setFooter({ text: `Purchase completed by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+        .setTimestamp();
+    
+    await targetChannel.send({ embeds: [productEmbed] });
+    
+    await interaction.reply({ content: `✅ **${purchase.name}** has been sent to ${targetChannel}!`, flags: 64 });
+    setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+    
+    const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+    if (logChannel) {
+        logChannel.send({ content: `📝 **Purchase** by ${interaction.user.tag} for ${buyer.user.tag}\n**Product:** ${purchase.name}\n**Channel:** ${targetChannel.name}` }).catch(() => {});
     }
 });
 
