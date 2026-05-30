@@ -18,6 +18,7 @@ const CONFIG = {
     UNVERIFIED_ROLE_ID: process.env.UNVERIFIED_ROLE_ID,
     CREATE_PURCHASE_ROLE_ID: process.env.CREATE_PURCHASE_ROLE_ID,
     PURCHASE_ROLE_ID: process.env.PURCHASE_ROLE_ID,
+    VERIFYALL_ROLE_ID: process.env.VERIFYALL_ROLE_ID, // NEW: Role that can use /verifyall
     
     SPOOF_ACCOUNTS_ROLE_ID: process.env.SPOOF_ACCOUNTS_ROLE_ID,
     TRIGGER_SHOP_ROLE_ID: process.env.TRIGGER_SHOP_ROLE_ID,
@@ -58,6 +59,9 @@ const joinedMembers = new Set();
 const purchases = new Map();
 
 const LOGO_URL = 'https://imgur.com/a/SRBY2qE';
+
+// Helper function for delay
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ============================================
 // UPDATE MEMBER COUNT
@@ -129,6 +133,11 @@ async function registerCommands(guild) {
             options: [
                 { name: 'user', description: 'The user who bought the product', type: 6, required: true }
             ]
+        },
+        {
+            name: 'verifyall',
+            description: 'Verify ALL members (adds verified role, removes unverified)',
+            options: []
         }
     ];
     await guild.commands.set(commands);
@@ -142,7 +151,7 @@ async function deleteOldCommands(guild) {
     try {
         const commands = await guild.commands.fetch();
         for (const command of commands.values()) {
-            if (!['send', 'product', 'clear', 'review', 'createpurchase', 'purchase'].includes(command.name)) {
+            if (!['send', 'product', 'clear', 'review', 'createpurchase', 'purchase', 'verifyall'].includes(command.name)) {
                 await guild.commands.delete(command.id);
             }
         }
@@ -351,6 +360,75 @@ async function sendTranscript(channel, interaction) {
             )
             .setTimestamp();
         await transcriptChannel.send({ embeds: [embed], files: [{ attachment: Buffer.from(transcript, 'utf-8'), name: `${channel.name}-transcript.txt` }] });
+    }
+}
+
+// ============================================
+// VERIFYALL COMMAND
+// ============================================
+async function verifyAllMembers(interaction) {
+    const verifiedRole = interaction.guild.roles.cache.get(CONFIG.VERIFIED_ROLE_ID);
+    const unverifiedRole = interaction.guild.roles.cache.get(CONFIG.UNVERIFIED_ROLE_ID);
+    
+    if (!verifiedRole) {
+        return interaction.reply({ content: '❌ Verified role not configured!', flags: 64 });
+    }
+    
+    await interaction.reply({ content: '🔄 **Verifying all members...** This may take a while.', flags: 64 });
+    
+    let verifiedCount = 0;
+    let alreadyVerifiedCount = 0;
+    let failedCount = 0;
+    
+    // Fetch all members
+    await interaction.guild.members.fetch();
+    const members = interaction.guild.members.cache.filter(member => !member.user.bot);
+    
+    for (const member of members.values()) {
+        try {
+            // Add verified role if not already has it
+            if (!member.roles.cache.has(verifiedRole.id)) {
+                await member.roles.add(verifiedRole);
+                verifiedCount++;
+            } else {
+                alreadyVerifiedCount++;
+            }
+            
+            // Remove unverified role if they have it
+            if (unverifiedRole && member.roles.cache.has(unverifiedRole.id)) {
+                await member.roles.remove(unverifiedRole);
+            }
+            
+            // Small delay to avoid rate limits
+            await delay(500);
+            
+        } catch (error) {
+            failedCount++;
+            console.log(`Failed to verify ${member.user.tag}: ${error.message}`);
+        }
+    }
+    
+    const resultEmbed = new EmbedBuilder()
+        .setTitle('✅ **Verification Complete!**')
+        .setDescription(`All members have been processed.`)
+        .setColor(0x00ff00)
+        .setThumbnail(LOGO_URL)
+        .addFields(
+            { name: '✅ Newly Verified', value: `${verifiedCount} members`, inline: true },
+            { name: '🔄 Already Verified', value: `${alreadyVerifiedCount} members`, inline: true },
+            { name: '❌ Failed', value: `${failedCount} members`, inline: true },
+            { name: '📊 Total Members', value: `${members.size} members`, inline: true }
+        )
+        .setFooter({ text: `Verified by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+        .setTimestamp();
+    
+    await interaction.editReply({ content: null, embeds: [resultEmbed] });
+    setTimeout(() => interaction.deleteReply().catch(() => {}), 10000);
+    
+    // Log to log channel
+    const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+    if (logChannel) {
+        logChannel.send({ content: `📝 **/verifyall** executed by ${interaction.user.tag}\n**Result:** ${verifiedCount} verified, ${alreadyVerifiedCount} already verified, ${failedCount} failed` }).catch(() => {});
     }
 }
 
@@ -601,6 +679,17 @@ client.on('interactionCreate', async (interaction) => {
             components: [row],
             flags: 64
         });
+    }
+    
+    // /verifyall command
+    if (interaction.commandName === 'verifyall') {
+        if (!interaction.member.roles.cache.has(CONFIG.VERIFYALL_ROLE_ID)) {
+            await interaction.reply({ content: '❌ You do not have permission to use /verifyall.', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            return;
+        }
+        
+        await verifyAllMembers(interaction);
     }
 });
 
