@@ -34,7 +34,7 @@ const CONFIG = {
     ROLE_CLAIM_CHANNEL_ID: process.env.ROLE_CLAIM_CHANNEL_ID,
     VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
     
-    // 3 VERSCHILLENDE STORAGE KANALEN
+    // 3 STORAGE KANALEN
     STORAGE_DISCORD_CHANNEL_ID: process.env.STORAGE_DISCORD_CHANNEL_ID,
     STORAGE_STEAM_CHANNEL_ID: process.env.STORAGE_STEAM_CHANNEL_ID,
     STORAGE_FIVEM_CHANNEL_ID: process.env.STORAGE_FIVEM_CHANNEL_ID,
@@ -65,15 +65,14 @@ const joinedMembers = new Set();
 const purchases = new Map();
 
 // ============================================
-// STORAGE SYSTEM - 3 VERSCHILLENDE TYPES
+// STORAGE SYSTEM - 3 TYPES
 // ============================================
 const storage = {
-    discord: [],  // Discord accounts
-    steam: [],    // Steam accounts
-    fivem: []     // FiveM accounts
+    discord: [],
+    steam: [],
+    fivem: []
 };
 
-// Message IDs voor elk kanaal
 let storageMessages = {
     discord: null,
     steam: null,
@@ -93,52 +92,21 @@ function addAccount(type, accountData, addedBy) {
     return account;
 }
 
-// Helper function to get all accounts from storage
-function getAllAccounts() {
-    const all = [];
-    for (const type of ['discord', 'steam', 'fivem']) {
-        for (const account of storage[type]) {
-            all.push({
-                ...account,
-                type: type
-            });
-        }
-    }
-    return all;
+// Helper function to get accounts by type
+function getAccountsByType(type) {
+    return storage[type].map(account => ({ ...account, type: type }));
 }
 
 // Helper function to remove account by ID and type
-function removeAccountById(accountId, type = null) {
-    const typesToCheck = type ? [type] : ['discord', 'steam', 'fivem'];
-    
-    for (const t of typesToCheck) {
-        const index = storage[t].findIndex(a => a.id === accountId);
-        if (index !== -1) {
-            const removed = storage[t][index];
-            storage[t].splice(index, 1);
-            updateAllStorageDisplays();
-            return { ...removed, type: t };
-        }
+function removeAccountById(accountId, type) {
+    const index = storage[type].findIndex(a => a.id === accountId);
+    if (index !== -1) {
+        const removed = storage[type][index];
+        storage[type].splice(index, 1);
+        updateAllStorageDisplays();
+        return { ...removed, type: type };
     }
     return null;
-}
-
-// Helper function to get account by ID
-function getAccountById(accountId) {
-    for (const type of ['discord', 'steam', 'fivem']) {
-        const account = storage[type].find(a => a.id === accountId);
-        if (account) return { ...account, type: type };
-    }
-    return null;
-}
-
-// Helper function to get random account from a type
-function getRandomAccount(type) {
-    if (storage[type].length === 0) return null;
-    const randomIndex = Math.floor(Math.random() * storage[type].length);
-    const account = storage[type][randomIndex];
-    removeAccountById(account.id, type);
-    return account;
 }
 
 // Helper function to get storage stats
@@ -158,9 +126,17 @@ function isBundleAvailable() {
 
 // Helper function to give bundle (one of each)
 function giveBundle() {
-    const discordAccount = getRandomAccount('discord');
-    const steamAccount = getRandomAccount('steam');
-    const fivemAccount = getRandomAccount('fivem');
+    const getRandom = (type) => {
+        if (storage[type].length === 0) return null;
+        const randomIndex = Math.floor(Math.random() * storage[type].length);
+        const account = storage[type][randomIndex];
+        removeAccountById(account.id, type);
+        return account;
+    };
+    
+    const discordAccount = getRandom('discord');
+    const steamAccount = getRandom('steam');
+    const fivemAccount = getRandom('fivem');
     
     if (!discordAccount || !steamAccount || !fivemAccount) return null;
     
@@ -172,16 +148,13 @@ function giveBundle() {
 }
 
 // ============================================
-// UPDATE ALL 3 STORAGE DISPLAYS
+// UPDATE STORAGE DISPLAYS
 // ============================================
 async function updateStorageDisplayForType(type) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
     
-    let channelId;
-    let title;
-    let emoji;
-    let color;
+    let channelId, title, emoji, color;
     
     switch(type) {
         case 'discord':
@@ -242,16 +215,14 @@ async function updateStorageDisplayForType(type) {
             const existingMessage = await storageChannel.messages.fetch(storageMessages[type]).catch(() => null);
             if (existingMessage) {
                 await existingMessage.edit({ embeds: [embed], components: [row] });
-                console.log(`✅ ${type} storage display updated!`);
                 return;
             }
         }
         
         const newMessage = await storageChannel.send({ embeds: [embed], components: [row] });
         storageMessages[type] = newMessage.id;
-        console.log(`✅ ${type} storage display created!`);
     } catch (error) {
-        console.log(`❌ Failed to update ${type} storage display:`, error.message);
+        console.log(`❌ Failed to update ${type} storage:`, error.message);
     }
 }
 
@@ -262,11 +233,10 @@ async function updateAllStorageDisplays() {
 }
 
 // ============================================
-// CRISP, CLEAR LOGO URL
+// LOGO URL
 // ============================================
 const LOGO_URL = 'https://cdn.discordapp.com/attachments/1509665549410635787/1509928894361370735/hexmods.png';
 
-// Helper function for delay
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ============================================
@@ -361,12 +331,7 @@ async function registerCommands(guild) {
             name: 'giveaccount',
             description: 'Give an account to a user',
             options: [
-                { name: 'user', description: 'The user to give the account to', type: 6, required: true },
-                { name: 'type', description: 'Account type (optional, shows all if not specified)', type: 3, required: false, choices: [
-                    { name: 'Discord', value: 'discord' },
-                    { name: 'Steam', value: 'steam' },
-                    { name: 'FiveM', value: 'fivem' }
-                ] }
+                { name: 'user', description: 'The user to give the account to', type: 6, required: true }
             ]
         },
         {
@@ -425,7 +390,7 @@ async function sendTicketMessage(guild) {
 }
 
 // ============================================
-// BEAUTIFUL ROLE CLAIM EMBED
+// ROLE CLAIM EMBED
 // ============================================
 async function sendRoleClaimMessage(guild) {
     const channel = guild.channels.cache.get(CONFIG.ROLE_CLAIM_CHANNEL_ID);
@@ -680,10 +645,8 @@ client.once('ready', async () => {
         await sendRoleClaimMessage(guild);
         await sendTicketMessage(guild);
         
-        // Update alle 3 storage displays
         await updateAllStorageDisplays();
         
-        // Auto-refresh elke 30 seconden
         setInterval(async () => {
             await updateAllStorageDisplays();
         }, 30000);
@@ -968,7 +931,7 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     
-    // /giveaccount command
+    // /giveaccount command - EERST CATEGORY KIEZEN
     if (interaction.commandName === 'giveaccount') {
         if (!interaction.member.roles.cache.has(CONFIG.GIVEACCOUNT_ROLE_ID)) {
             await interaction.reply({ content: '❌ You do not have permission to give accounts.', flags: 64 });
@@ -977,43 +940,57 @@ client.on('interactionCreate', async (interaction) => {
         }
         
         const user = interaction.options.getUser('user');
-        const typeFilter = interaction.options.getString('type');
         
-        let accounts = getAllAccounts();
-        if (typeFilter) {
-            accounts = accounts.filter(a => a.type === typeFilter);
-        }
-        
-        if (accounts.length === 0) {
+        // Check if any accounts exist
+        const totalAccounts = storage.discord.length + storage.steam.length + storage.fivem.length;
+        if (totalAccounts === 0) {
             await interaction.reply({ content: '❌ No accounts available in storage!', flags: 64 });
             setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
             return;
         }
         
-        const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId(`giveaccount_select_${user.id}_${interaction.channelId}`)
-            .setPlaceholder('Select an account to give')
-            .addOptions(
-                accounts.map(account => {
-                    let typeEmoji = '💬';
-                    if (account.type === 'steam') typeEmoji = '🎮';
-                    if (account.type === 'fivem') typeEmoji = '🚗';
-                    
-                    let label = `${typeEmoji} ${account.type.toUpperCase()} - ${account.id}`;
-                    if (label.length > 100) label = label.substring(0, 97) + '...';
-                    
-                    return new StringSelectMenuOptionBuilder()
-                        .setLabel(label)
-                        .setDescription(`${account.content.substring(0, 80)}${account.content.length > 80 ? '...' : ''}`)
-                        .setValue(account.id)
-                        .setEmoji(typeEmoji);
-                })
+        // Create category selection menu
+        const categoryOptions = [];
+        
+        if (storage.discord.length > 0) {
+            categoryOptions.push(
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('💬 Discord Accounts')
+                    .setDescription(`${storage.discord.length} account(s) available`)
+                    .setValue('discord')
+                    .setEmoji('💬')
             );
+        }
+        
+        if (storage.steam.length > 0) {
+            categoryOptions.push(
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('🎮 Steam Accounts')
+                    .setDescription(`${storage.steam.length} account(s) available`)
+                    .setValue('steam')
+                    .setEmoji('🎮')
+            );
+        }
+        
+        if (storage.fivem.length > 0) {
+            categoryOptions.push(
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('🚗 FiveM Accounts')
+                    .setDescription(`${storage.fivem.length} account(s) available`)
+                    .setValue('fivem')
+                    .setEmoji('🚗')
+            );
+        }
+        
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId(`giveaccount_category_${user.id}_${interaction.channelId}`)
+            .setPlaceholder('Select a category...')
+            .addOptions(categoryOptions);
         
         const row = new ActionRowBuilder().addComponents(selectMenu);
         
         await interaction.reply({
-            content: `📦 **Select an account to give to ${user}**`,
+            content: `📦 **Select a category to give an account to ${user}**`,
             components: [row],
             flags: 64
         });
@@ -1086,15 +1063,16 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
-// GIVEACCOUNT SELECT MENU HANDLER
+// GIVEACCOUNT CATEGORY SELECTION HANDLER
 // ============================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isStringSelectMenu()) return;
-    if (!interaction.customId.startsWith('giveaccount_select_')) return;
+    if (!interaction.customId.startsWith('giveaccount_category_')) return;
     
     const parts = interaction.customId.split('_');
     const userId = parts[2];
     const channelId = parts[3];
+    const category = interaction.values[0];
     
     const targetUser = await interaction.guild.members.fetch(userId).catch(() => null);
     const targetChannel = interaction.guild.channels.cache.get(channelId);
@@ -1111,16 +1089,88 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    const accountId = interaction.values[0];
-    const account = getAccountById(accountId);
+    const accounts = getAccountsByType(category);
     
-    if (!account) {
-        await interaction.reply({ content: '❌ Account not found! It may have been given to someone else.', flags: 64 });
+    if (accounts.length === 0) {
+        await interaction.reply({ content: `❌ No ${category} accounts available!`, flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
         return;
     }
     
-    const removedAccount = removeAccountById(accountId);
+    // Create account selection menu
+    const accountOptions = accounts.map(account => {
+        let emoji = '💬';
+        if (category === 'steam') emoji = '🎮';
+        if (category === 'fivem') emoji = '🚗';
+        
+        let label = `${account.id}`;
+        if (label.length > 100) label = label.substring(0, 97) + '...';
+        
+        return new StringSelectMenuOptionBuilder()
+            .setLabel(label)
+            .setDescription(`${account.content.substring(0, 80)}${account.content.length > 80 ? '...' : ''}`)
+            .setValue(account.id)
+            .setEmoji(emoji);
+    });
+    
+    // Split into chunks of 25 (Discord limit)
+    const chunks = [];
+    for (let i = 0; i < accountOptions.length; i += 25) {
+        chunks.push(accountOptions.slice(i, i + 25));
+    }
+    
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`giveaccount_account_${userId}_${channelId}_${category}`)
+        .setPlaceholder(`Select an account to give (${accounts.length} available)`)
+        .addOptions(accountOptions.slice(0, 25));
+    
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+    
+    let categoryName = 'Discord';
+    if (category === 'steam') categoryName = 'Steam';
+    if (category === 'fivem') categoryName = 'FiveM';
+    
+    await interaction.update({
+        content: `📦 **Select an account to give to ${targetUser.user.tag} (${categoryName} accounts)**`,
+        components: [row],
+        flags: 64
+    });
+    
+    // Store the target info for the next step
+    if (!client.giveAccountData) client.giveAccountData = new Map();
+    client.giveAccountData.set(interaction.id, { userId, channelId, category });
+    setTimeout(() => client.giveAccountData.delete(interaction.id), 300000);
+});
+
+// ============================================
+// GIVEACCOUNT ACCOUNT SELECTION HANDLER
+// ============================================
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isStringSelectMenu()) return;
+    if (!interaction.customId.startsWith('giveaccount_account_')) return;
+    
+    const parts = interaction.customId.split('_');
+    const userId = parts[2];
+    const channelId = parts[3];
+    const category = parts[4];
+    const accountId = interaction.values[0];
+    
+    const targetUser = await interaction.guild.members.fetch(userId).catch(() => null);
+    const targetChannel = interaction.guild.channels.cache.get(channelId);
+    
+    if (!targetUser) {
+        await interaction.reply({ content: '❌ User not found!', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        return;
+    }
+    
+    if (!targetChannel) {
+        await interaction.reply({ content: '❌ Channel not found!', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        return;
+    }
+    
+    const removedAccount = removeAccountById(accountId, category);
     
     if (!removedAccount) {
         await interaction.reply({ content: '❌ Failed to give account. It may have been already given.', flags: 64 });
@@ -1179,27 +1229,27 @@ client.on('interactionCreate', async (interaction) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     
-    // Refresh buttons for each storage type
+    // Refresh buttons
     if (interaction.customId === 'refresh_discord') {
         await updateStorageDisplayForType('discord');
-        await interaction.reply({ content: '🔄 Discord storage display refreshed!', flags: 64 });
+        await interaction.reply({ content: '🔄 Discord storage refreshed!', flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
         return;
     }
     if (interaction.customId === 'refresh_steam') {
         await updateStorageDisplayForType('steam');
-        await interaction.reply({ content: '🔄 Steam storage display refreshed!', flags: 64 });
+        await interaction.reply({ content: '🔄 Steam storage refreshed!', flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
         return;
     }
     if (interaction.customId === 'refresh_fivem') {
         await updateStorageDisplayForType('fivem');
-        await interaction.reply({ content: '🔄 FiveM storage display refreshed!', flags: 64 });
+        await interaction.reply({ content: '🔄 FiveM storage refreshed!', flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
         return;
     }
     
-    // Export buttons for each storage type
+    // Export buttons
     if (interaction.customId === 'export_discord') {
         let exportText = `=== DISCORD ACCOUNTS EXPORT ===\nExported at: ${new Date().toLocaleString()}\nTotal: ${storage.discord.length}\n\n`;
         storage.discord.forEach(a => {
