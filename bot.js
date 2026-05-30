@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, ChannelType, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, ChannelType, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const express = require('express');
 
 // ============================================
@@ -18,7 +18,7 @@ const CONFIG = {
     UNVERIFIED_ROLE_ID: process.env.UNVERIFIED_ROLE_ID,
     CREATE_PURCHASE_ROLE_ID: process.env.CREATE_PURCHASE_ROLE_ID,
     PURCHASE_ROLE_ID: process.env.PURCHASE_ROLE_ID,
-    VERIFYALL_ROLE_ID: process.env.VERIFYALL_ROLE_ID, // NEW: Role that can use /verifyall
+    VERIFYALL_ROLE_ID: process.env.VERIFYALL_ROLE_ID,
     
     SPOOF_ACCOUNTS_ROLE_ID: process.env.SPOOF_ACCOUNTS_ROLE_ID,
     TRIGGER_SHOP_ROLE_ID: process.env.TRIGGER_SHOP_ROLE_ID,
@@ -86,8 +86,8 @@ async function registerCommands(guild) {
     const commands = [
         {
             name: 'send',
-            description: 'Send a message as the bot',
-            options: [{ name: 'message', description: 'The message to send', type: 3, required: true }]
+            description: 'Send a message as the bot (opens a modal for multi-line messages)',
+            options: []
         },
         {
             name: 'product',
@@ -380,13 +380,11 @@ async function verifyAllMembers(interaction) {
     let alreadyVerifiedCount = 0;
     let failedCount = 0;
     
-    // Fetch all members
     await interaction.guild.members.fetch();
     const members = interaction.guild.members.cache.filter(member => !member.user.bot);
     
     for (const member of members.values()) {
         try {
-            // Add verified role if not already has it
             if (!member.roles.cache.has(verifiedRole.id)) {
                 await member.roles.add(verifiedRole);
                 verifiedCount++;
@@ -394,12 +392,10 @@ async function verifyAllMembers(interaction) {
                 alreadyVerifiedCount++;
             }
             
-            // Remove unverified role if they have it
             if (unverifiedRole && member.roles.cache.has(unverifiedRole.id)) {
                 await member.roles.remove(unverifiedRole);
             }
             
-            // Small delay to avoid rate limits
             await delay(500);
             
         } catch (error) {
@@ -425,7 +421,6 @@ async function verifyAllMembers(interaction) {
     await interaction.editReply({ content: null, embeds: [resultEmbed] });
     setTimeout(() => interaction.deleteReply().catch(() => {}), 10000);
     
-    // Log to log channel
     const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
     if (logChannel) {
         logChannel.send({ content: `📝 **/verifyall** executed by ${interaction.user.tag}\n**Result:** ${verifiedCount} verified, ${alreadyVerifiedCount} already verified, ${failedCount} failed` }).catch(() => {});
@@ -457,22 +452,30 @@ client.once('ready', async () => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     
-    // /send command
+    // /send command - Opens a modal for multi-line messages
     if (interaction.commandName === 'send') {
         if (!interaction.member.roles.cache.has(CONFIG.SEND_ROLE_ID)) {
-            await interaction.reply({ content: '❌ No permission.', flags: 64 });
-            setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
+            await interaction.reply({ content: '❌ You do not have permission to use `/send`.', flags: 64 });
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
             return;
         }
-        const msg = interaction.options.getString('message');
-        if (!msg?.trim()) {
-            await interaction.reply({ content: '❌ Provide a message.', flags: 64 });
-            setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
-            return;
-        }
-        await interaction.channel.send(msg);
-        await interaction.reply({ content: '✅ Sent!', flags: 64 });
-        setTimeout(() => interaction.deleteReply().catch(() => {}), 1000);
+        
+        const modal = new ModalBuilder()
+            .setCustomId('send_message_modal')
+            .setTitle('Send Message as Bot')
+            .addComponents(
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId('message_content')
+                        .setLabel('Message Content')
+                        .setStyle(TextInputStyle.Paragraph)
+                        .setPlaceholder('Type your message here... (Shift+Enter for new line)')
+                        .setRequired(true)
+                        .setMaxLength(4000)
+                )
+            );
+        
+        await interaction.showModal(modal);
     }
     
     // /product command
@@ -581,7 +584,7 @@ client.on('interactionCreate', async (interaction) => {
         setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
     }
     
-    // /createpurchase command (Admin only) - WITH FILE ATTACHMENT SUPPORT
+    // /createpurchase command
     if (interaction.commandName === 'createpurchase') {
         if (!interaction.member.roles.cache.has(CONFIG.CREATE_PURCHASE_ROLE_ID)) {
             await interaction.reply({ content: '❌ You do not have permission to create purchases.', flags: 64 });
@@ -592,7 +595,6 @@ client.on('interactionCreate', async (interaction) => {
         const name = interaction.options.getString('name');
         const content = interaction.options.getString('content');
         
-        // Check for file attachments
         let attachmentUrl = null;
         let attachmentName = null;
         
@@ -602,7 +604,6 @@ client.on('interactionCreate', async (interaction) => {
             attachmentName = attachment.name;
         }
         
-        // Combine text content and file if both exist
         let finalContent = content || '';
         if (attachmentUrl) {
             if (finalContent) finalContent += '\n\n';
@@ -615,7 +616,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
         
-        // Store the purchase
         purchases.set(name.toLowerCase(), {
             name: name,
             content: finalContent,
@@ -629,14 +629,13 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ content: `✅ Purchase option **${name}** has been created! Use /purchase to sell it.`, flags: 64 });
         setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
         
-        // Log to log channel
         const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
         if (logChannel) {
             logChannel.send({ content: `📝 **/createpurchase** by ${interaction.user.tag}\n**Product:** ${name}` }).catch(() => {});
         }
     }
     
-    // /purchase command - Shows dropdown menu of products (Admin only)
+    // /purchase command
     if (interaction.commandName === 'purchase') {
         if (!interaction.member.roles.cache.has(CONFIG.PURCHASE_ROLE_ID)) {
             await interaction.reply({ content: '❌ You do not have permission to purchase products.', flags: 64 });
@@ -652,7 +651,6 @@ client.on('interactionCreate', async (interaction) => {
             return;
         }
         
-        // Create dropdown menu of products
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId(`purchase_select_${buyer.id}_${interaction.channelId}`)
             .setPlaceholder('Select a product to purchase')
@@ -694,6 +692,32 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ============================================
+// MODAL HANDLER FOR /send
+// ============================================
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isModalSubmit()) return;
+    if (interaction.customId !== 'send_message_modal') return;
+    
+    const messageContent = interaction.fields.getTextInputValue('message_content');
+    
+    if (!messageContent || messageContent.trim() === '') {
+        await interaction.reply({ content: '❌ Please provide a message.', flags: 64 });
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+        return;
+    }
+    
+    await interaction.channel.send(messageContent);
+    
+    await interaction.reply({ content: '✅ Message sent!', flags: 64 });
+    setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
+    
+    const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
+    if (logChannel) {
+        logChannel.send({ content: `📝 **/send** by ${interaction.user.tag} in ${interaction.channel.name}\n**Message:** ${messageContent.substring(0, 200)}${messageContent.length > 200 ? '...' : ''}` }).catch(() => {});
+    }
+});
+
+// ============================================
 // PURCHASE SELECT MENU HANDLER
 // ============================================
 client.on('interactionCreate', async (interaction) => {
@@ -728,7 +752,6 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     
-    // Send the product embed directly to the channel where the command was used
     const productEmbed = new EmbedBuilder()
         .setTitle(`🛍️ **${purchase.name}**`)
         .setDescription(purchase.content)
@@ -747,7 +770,6 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.reply({ content: `✅ **${purchase.name}** has been sent to ${targetChannel}!`, flags: 64 });
     setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
     
-    // Log to log channel
     const logChannel = interaction.guild.channels.cache.get(CONFIG.LOG_CHANNEL_ID);
     if (logChannel) {
         logChannel.send({ content: `📝 **Purchase** by ${interaction.user.tag} for ${buyer.user.tag}\n**Product:** ${purchase.name}\n**Channel:** ${targetChannel.name}` }).catch(() => {});
