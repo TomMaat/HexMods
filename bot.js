@@ -58,7 +58,8 @@ const tickets = new Map();
 const joinedMembers = new Set();
 const purchases = new Map();
 
-const LOGO_URL = 'https://imgur.com/a/SRBY2qE';
+// CRISP, CLEAR LOGO URL - High quality PNG
+const LOGO_URL = 'https://cdn.discordapp.com/attachments/1509665549410635787/1509928894361370735/hexmods.png?ex=6a1b9f1d&is=6a1a4d9d&hm=4ed75f2983a507ec97c805523f7caddd624ff981960a30acd0e3159eb5eefca3&';
 
 // Helper function for delay
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
